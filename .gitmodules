@@ -1,0 +1,3 @@
+[submodule "fonts-for-xcb"]
+	path = fonts-for-xcb
+	url = https://github.com/venam/fonts-for-xcb

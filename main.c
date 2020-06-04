@@ -4,8 +4,8 @@
 #include <unistd.h>
 
 #include <xcb/xcb.h>
-#include <X11/Xft/Xft.h>
-#include <X11/Xlib.h>
+
+#include "fonts-for-xcb/xcbft/xcbft.h"
 
 #define SB_NUM_CHARS 3
 #define SCREEN_NUMBER 0
@@ -21,14 +21,6 @@ typedef struct _SamBar {
     xcb_connection_t *connection;
     xcb_screen_t *screen;
     xcb_window_t window;
-    xcb_pixmap_t pixmap;
-    xcb_gcontext_t gc;
-    
-    Display *display;
-    XftFont *font;
-    XGlyphInfo glyph_info;
-    Visual *visual;
-    XftDraw *xft_draw;
 } SamBar;
 
 enum StrutPartial {
@@ -69,16 +61,10 @@ int main() {
     sam_bar.connection = xcb_connect(NULL, &ptr);
     sam_bar.screen = xcb_setup_roots_iterator(xcb_get_setup(sam_bar.connection)).data;
     sam_bar.window = xcb_generate_id(sam_bar.connection);
-    sam_bar.pixmap = xcb_generate_id(sam_bar.connection);
-    sam_bar.gc = xcb_generate_id(sam_bar.connection);
-    sam_bar.display = XOpenDisplay(NULL);
-    sam_bar.font = XftFontOpenName(sam_bar.display, SCREEN_NUMBER, "Hasklug Nerd Font");
-    XftTextExtents8(sam_bar.display, sam_bar.font, (FcChar8 *)"A", 1, &sam_bar.glyph_info);
-    sam_bar.visual = XDefaultVisual(sam_bar.display, SCREEN_NUMBER);
 
-    int width = (SB_NUM_CHARS + 1) * sam_bar.glyph_info.xOff;
+    int width = 32;
     int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT;
-    int values[3] = {sam_bar.screen->white_pixel, sam_bar.screen->black_pixel, true};
+    int values[3] = {sam_bar.screen->black_pixel, sam_bar.screen->black_pixel, true};
 
     xcb_void_cookie_t cookie = xcb_create_window_checked(
             sam_bar.connection,
@@ -95,28 +81,6 @@ int main() {
             mask,
             values);
     sb_test_cookie(&sam_bar, cookie, "xcb_create_window_checked failed");
-    cookie = xcb_create_pixmap_checked(
-            sam_bar.connection,
-            sam_bar.screen->root_depth,
-            sam_bar.pixmap,
-            sam_bar.window,
-            width,
-            sam_bar.screen->height_in_pixels);
-    sb_test_cookie(&sam_bar, cookie, "xcb_create_pixmap_checked failed");
-    values[0] = sam_bar.screen->black_pixel;
-    values[1] = sam_bar.screen->white_pixel;
-    cookie = xcb_create_gc_checked(
-            sam_bar.connection,
-            sam_bar.gc,
-            sam_bar.pixmap,
-            XCB_GC_FOREGROUND,
-            values);
-    sb_test_cookie(&sam_bar, cookie, "xcb_create_gc_checked failed");
-    sam_bar.xft_draw = XftDrawCreate(
-            sam_bar.display,
-            sam_bar.pixmap,
-            sam_bar.visual,
-            sam_bar.screen->default_colormap);
 
     /* setup struts so windows don't overlap the bar */
     int struts[STRUTS_NUM_ARGS] = {0};
@@ -152,47 +116,35 @@ int main() {
     xcb_map_window(sam_bar.connection, sam_bar.window);
     xcb_flush(sam_bar.connection);
 
-    /* try to draw a string */
-    XftColor color;
-    XftColorAllocName(
-            sam_bar.display,
-            sam_bar.visual,
-            sam_bar.screen->default_colormap,
-            "#000000", 
-            &color);
-    //XftDrawString8(
-    //        sam_bar.xft_draw,
-    //        &color,
-    //        sam_bar.font,
-    //        5,
-    //        5,
-    //        (FcChar8 *)"HW!",
-    //        3);
-    xcb_rectangle_t rect[4] = {{0, 0, width, sam_bar.screen->height_in_pixels}};
-    cookie = xcb_poly_fill_rectangle_checked(
+    /* try to do text stuff */
+    char *searchlist = "Hasklug Nerd Font:dpi=96:size=11:antialias=true:style=bold";
+    struct utf_holder text = char_to_uint32("68%");
+    FcStrSet *fontsearch = xcbft_extract_fontsearch_list(searchlist);
+    struct xcbft_patterns_holder font_patterns = xcbft_query_fontsearch_all(fontsearch);
+    FcStrSetDestroy(fontsearch);
+    long dpi = xcbft_get_dpi(sam_bar.connection);
+    printf("%ld\n", dpi);
+    struct xcbft_face_holder faces = xcbft_load_faces(font_patterns, dpi);
+    xcbft_patterns_holder_destroy(font_patterns);
+    xcb_render_color_t text_color;
+    text_color.red = 0x6b6b;
+    text_color.green = 0x7070;
+    text_color.blue = 0x8989;
+    text_color.alpha = 0xFFFF;
+    xcbft_draw_text(
             sam_bar.connection,
-            sam_bar.pixmap,
-            sam_bar.gc,
-            1,
-            rect);
-    sb_test_cookie(&sam_bar, cookie, "poly fill failed");
-    cookie = xcb_copy_area_checked(
-            sam_bar.connection,
-            sam_bar.pixmap,
             sam_bar.window,
-            sam_bar.gc,
-            0, 0, 0, 0,
-            width,
-            sam_bar.screen->height_in_pixels);
-    sb_test_cookie(&sam_bar, cookie, "copy area failed");
+            1, 40,
+            text,
+            text_color,
+            faces,
+            dpi);
     xcb_flush(sam_bar.connection);
-    sleep(2);
 
-    XftDrawDestroy(sam_bar.xft_draw);
-    XftFontClose(sam_bar.display, sam_bar.font);
-    XftColorFree(sam_bar.display, sam_bar.visual, sam_bar.screen->default_colormap, &color);
-    XCloseDisplay(sam_bar.display);
-    xcb_free_gc(sam_bar.connection, sam_bar.gc);
-    xcb_free_pixmap(sam_bar.connection, sam_bar.pixmap);
+    getchar();
+
+    utf_holder_destroy(text);
+    xcbft_face_holder_destroy(faces);
     xcb_disconnect(sam_bar.connection);
+    FcFini();
 }
