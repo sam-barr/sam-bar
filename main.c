@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <poll.h>
+#include <signal.h> 
 
 #include <sys/timerfd.h>
 
@@ -125,7 +126,15 @@ void sb_write_text(SamBar *sam_bar, int y, char *message) {
     }
 }
 
+void sb_handle_sigterm(int signum) {
+    exit(signum);
+}
+
 int main() {
+    /* handle SIGTERM */
+    signal(SIGINT, sb_handle_sigterm);
+    signal(SIGTERM, sb_handle_sigterm);
+
     /* Initialize a bunch of shit */
     int ptr = SCREEN_NUMBER;
     SamBar sam_bar;
@@ -229,19 +238,6 @@ int main() {
     xcb_map_window(sam_bar.connection, sam_bar.window);
     xcb_flush(sam_bar.connection);
 
-    /* try to do text stuff */
-    //sb_write_text(&sam_bar, 40, "123#FF0000456#00ff00789");
-    //sb_write_text(&sam_bar, 150, " 1  2 #FFFFFF[3] 4  5  6  7  8  9 ");
-    //xcb_rectangle_t rectangle = { 0, 0, width, height };
-    //xcb_poly_fill_rectangle(
-    //        sam_bar.connection,
-    //        sam_bar.window,
-    //        sam_bar.gc,
-    //        1, // 1 rectangle
-    //        &rectangle);
-    //sb_write_text(&sam_bar, 150, " 1  2  3  4 #0000FF[5] 6  7  8  9 ");
-    xcb_flush(sam_bar.connection);
-
     /* main loop setup */
     struct pollfd pollfds[2];
     pollfds[0].fd = STDIN_FILENO;
@@ -259,38 +255,36 @@ int main() {
     char *stdin_line = malloc(0); // before we read stdin we free line, so start malloced
     bool redraw = false;
     while(1) {
-        int retval = poll(pollfds, 2, -1);
-        if(retval <= 0) {
-            printf("nothing doing\n");
-            continue;
-        } else {
-            if(pollfds[0].revents & POLLIN) {
-                redraw = true;
+        /* blocks until one of the fds becomes open */
+        poll(pollfds, 2, -1);
+        if(pollfds[0].revents & POLLHUP) {
+            /* stdin died, and so do we */
+            break;
+        } else if(pollfds[0].revents & POLLIN) {
+            redraw = true;
+            free(stdin_line);
+            size_t len = 0;
+            getline(&stdin_line, &len, stdin);
+            if(*stdin_line == 'X' || *stdin_line == EOF) {
                 free(stdin_line);
-                size_t len = 0;
-                getline(&stdin_line, &len, stdin);
-                if(*stdin_line == 'X') {
-                    free(stdin_line);
-                    break;
-                }
-            } else if(pollfds[1].revents & POLLIN) {
-                uint64_t num;
-                read(pollfds[1].fd, &num, sizeof(uint64_t));
-                printf("TIMER\n");
+                break;
             }
+        } else if(pollfds[1].revents & POLLIN) {
+            uint64_t num;
+            read(pollfds[1].fd, &num, sizeof(uint64_t));
+        }
 
-            if(redraw) {
-                xcb_rectangle_t rectangle = { 0, 0, width, height };
-                xcb_poly_fill_rectangle(
-                        sam_bar.connection,
-                        sam_bar.window,
-                        sam_bar.gc,
-                        1, // 1 rectangle
-                        &rectangle);
-                sb_write_text(&sam_bar, 40, stdin_line);
-                xcb_flush(sam_bar.connection);
-                redraw = false;
-            }
+        if(redraw) {
+            xcb_rectangle_t rectangle = { 0, 0, width, height };
+            xcb_poly_fill_rectangle(
+                    sam_bar.connection,
+                    sam_bar.window,
+                    sam_bar.gc,
+                    1, // 1 rectangle
+                    &rectangle);
+            sb_write_text(&sam_bar, 40, stdin_line);
+            xcb_flush(sam_bar.connection);
+            redraw = false;
         }
     }
 

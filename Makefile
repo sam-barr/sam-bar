@@ -6,5 +6,10 @@ CFLAGS=-Wall -Wextra -Wpedantic \
 	   $(shell pkg-config --cflags --libs fontconfig) \
 	   -g
 
-all: main.c
+all: sam-bar
+
+sam-bar: main.c
 	$(CC) $(CFLAGS) main.c -o sam-bar
+
+install: sam-bar
+	install ./sam-bar $(HOME)/.local/bin/sam-bar
