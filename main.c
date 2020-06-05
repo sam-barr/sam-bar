@@ -10,6 +10,7 @@
 #define SB_NUM_CHARS 3
 #define SCREEN_NUMBER 0
 #define ERROR NULL
+#define DPI 96
 
 #define STRUTS_NUM_ARGS 12
 
@@ -17,10 +18,12 @@
 
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
 
-typedef struct _SamBar {
+typedef struct {
     xcb_connection_t *connection;
     xcb_screen_t *screen;
     xcb_window_t window;
+
+    struct xcbft_face_holder faces;
 } SamBar;
 
 enum StrutPartial {
@@ -54,6 +57,34 @@ void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, char *message) {
     }
 }
 
+/*
+ * Assumptions: strlen(message) % SB_NUM_CHARS == 0
+ */
+void sb_write_text(SamBar *sam_bar, int y, char *message) {
+    char buffer[SB_NUM_CHARS + 1];
+    buffer[SB_NUM_CHARS] = '\0';
+    xcb_render_color_t text_color;
+    text_color.red = 0x6B6B;
+    text_color.green = 0x7070;
+    text_color.blue = 0x8989;
+    text_color.alpha = 0xFFFF;
+
+    for(; *message != '\0'; message += SB_NUM_CHARS, y += 24) {
+        for(int i = 0; i < SB_NUM_CHARS; i++)
+            buffer[i] = message[i];
+        struct utf_holder text = char_to_uint32(buffer);
+        xcbft_draw_text(
+                sam_bar->connection,
+                sam_bar->window,
+                3, y,
+                text,
+                text_color,
+                sam_bar->faces,
+                DPI);
+        utf_holder_destroy(text);
+    }
+}
+
 int main() {
     /* Initialize a bunch of shit */
     int ptr = SCREEN_NUMBER;
@@ -61,11 +92,27 @@ int main() {
     sam_bar.connection = xcb_connect(NULL, &ptr);
     sam_bar.screen = xcb_setup_roots_iterator(xcb_get_setup(sam_bar.connection)).data;
     sam_bar.window = xcb_generate_id(sam_bar.connection);
+    char searchlist[100] = {0};
+    sprintf(searchlist, "Hasklug Nerd Font:dpi=%d:size=11:antialias=true:style=bold", DPI);
+    FcStrSet *fontsearch = xcbft_extract_fontsearch_list(searchlist);
+    struct xcbft_patterns_holder font_patterns = xcbft_query_fontsearch_all(fontsearch);
+    FcStrSetDestroy(fontsearch);
+    sam_bar.faces = xcbft_load_faces(font_patterns, DPI);
+    xcbft_patterns_holder_destroy(font_patterns);
 
     int width = 32;
     int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT;
-    int values[3] = {sam_bar.screen->black_pixel, sam_bar.screen->black_pixel, true};
-
+    xcb_alloc_color_reply_t *reply = xcb_alloc_color_reply(
+            sam_bar.connection,
+            xcb_alloc_color(
+                sam_bar.connection,
+                sam_bar.screen->default_colormap,
+                0x0F0F,
+                0x1111,
+                0x1717),
+            ERROR);
+    int values[3] = {reply->pixel, reply->pixel, true};
+    free(reply);
     xcb_void_cookie_t cookie = xcb_create_window_checked(
             sam_bar.connection,
             sam_bar.screen->root_depth,
@@ -117,34 +164,13 @@ int main() {
     xcb_flush(sam_bar.connection);
 
     /* try to do text stuff */
-    char *searchlist = "Hasklug Nerd Font:dpi=96:size=11:antialias=true:style=bold";
-    struct utf_holder text = char_to_uint32("68%");
-    FcStrSet *fontsearch = xcbft_extract_fontsearch_list(searchlist);
-    struct xcbft_patterns_holder font_patterns = xcbft_query_fontsearch_all(fontsearch);
-    FcStrSetDestroy(fontsearch);
-    long dpi = xcbft_get_dpi(sam_bar.connection);
-    printf("%ld\n", dpi);
-    struct xcbft_face_holder faces = xcbft_load_faces(font_patterns, dpi);
-    xcbft_patterns_holder_destroy(font_patterns);
-    xcb_render_color_t text_color;
-    text_color.red = 0x6b6b;
-    text_color.green = 0x7070;
-    text_color.blue = 0x8989;
-    text_color.alpha = 0xFFFF;
-    xcbft_draw_text(
-            sam_bar.connection,
-            sam_bar.window,
-            1, 40,
-            text,
-            text_color,
-            faces,
-            dpi);
+    sb_write_text(&sam_bar, 40, "123456789");
+    sb_write_text(&sam_bar, 150, " 1  2 [3] 4  5  6  7  8  9 ");
     xcb_flush(sam_bar.connection);
 
     getchar();
 
-    utf_holder_destroy(text);
-    xcbft_face_holder_destroy(faces);
+    xcbft_face_holder_destroy(sam_bar.faces);
     xcb_disconnect(sam_bar.connection);
     FcFini();
 }
