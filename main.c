@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <poll.h>
+
+#include <sys/timerfd.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
@@ -90,18 +93,22 @@ uint16_t sb_parse_channel(char *str) {
 void sb_write_text(SamBar *sam_bar, int y, char *message) {
     char buffer[SB_NUM_CHARS + 1];
     buffer[SB_NUM_CHARS] = '\0';
-    xcb_render_color_t text_color;
-    text_color.red = 0x6B6B;
-    text_color.green = 0x7070;
-    text_color.blue = 0x8989;
-    text_color.alpha = 0xFFFF;
+    xcb_render_color_t default_color;
+    default_color.red = 0x6B6B;
+    default_color.green = 0x7070;
+    default_color.blue = 0x8989;
+    default_color.alpha = 0xFFFF;
 
-    for(; *message != '\0'; message += SB_NUM_CHARS, y += 24) {
+    for(; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += 24) {
+        xcb_render_color_t text_color;
         if(*message == '#') {
             text_color.red = sb_parse_channel(message += 1);
             text_color.green = sb_parse_channel(message += 2);
             text_color.blue = sb_parse_channel(message += 2);
+            text_color.alpha = 0xFFFF;
             message += 2;
+        } else {
+            text_color = default_color;
         }
         for(int i = 0; i < SB_NUM_CHARS; i++)
             buffer[i] = message[i];
@@ -149,6 +156,7 @@ int main() {
     int height = sam_bar.screen->height_in_pixels;
     int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_COLORMAP;
     /* Then we can just use 32-bit ARGB colors directly */
+    /* jsyk: 0F1117B1 is really pretty, but doesn't match your theme */
     int values[4] = { 0xB10F1117, 0xFFFFFFFF, true, colormap };
     xcb_void_cookie_t cookie = xcb_create_window_checked(
             sam_bar.connection,
@@ -222,15 +230,73 @@ int main() {
     xcb_flush(sam_bar.connection);
 
     /* try to do text stuff */
-    sb_write_text(&sam_bar, 40, "XXX");
     //sb_write_text(&sam_bar, 40, "123#FF0000456#00ff00789");
-    //sb_write_text(&sam_bar, 150, " 1  2 [3] 4  5  6  7  8  9 ");
+    //sb_write_text(&sam_bar, 150, " 1  2 #FFFFFF[3] 4  5  6  7  8  9 ");
+    //xcb_rectangle_t rectangle = { 0, 0, width, height };
+    //xcb_poly_fill_rectangle(
+    //        sam_bar.connection,
+    //        sam_bar.window,
+    //        sam_bar.gc,
+    //        1, // 1 rectangle
+    //        &rectangle);
+    //sb_write_text(&sam_bar, 150, " 1  2  3  4 #0000FF[5] 6  7  8  9 ");
     xcb_flush(sam_bar.connection);
 
-    getchar();
+    /* main loop setup */
+    struct pollfd pollfds[2];
+    pollfds[0].fd = STDIN_FILENO;
+    pollfds[0].events = POLLIN;
+    pollfds[1].fd = timerfd_create(CLOCK_MONOTONIC, 0);
+    pollfds[1].events = POLLIN;
+    struct itimerspec ts;
+    ts.it_interval.tv_sec = 1;
+    ts.it_interval.tv_nsec = 0;
+    ts.it_value.tv_sec = 1;
+    ts.it_value.tv_nsec = 0;
+    timerfd_settime(pollfds[1].fd, 0, &ts, NULL);
+
+    /* main loop */
+    char *stdin_line = malloc(0); // before we read stdin we free line, so start malloced
+    bool redraw = false;
+    while(1) {
+        int retval = poll(pollfds, 2, -1);
+        if(retval <= 0) {
+            printf("nothing doing\n");
+            continue;
+        } else {
+            if(pollfds[0].revents & POLLIN) {
+                redraw = true;
+                free(stdin_line);
+                size_t len = 0;
+                getline(&stdin_line, &len, stdin);
+                if(*stdin_line == 'X') {
+                    free(stdin_line);
+                    break;
+                }
+            } else if(pollfds[1].revents & POLLIN) {
+                uint64_t num;
+                read(pollfds[1].fd, &num, sizeof(uint64_t));
+                printf("TIMER\n");
+            }
+
+            if(redraw) {
+                xcb_rectangle_t rectangle = { 0, 0, width, height };
+                xcb_poly_fill_rectangle(
+                        sam_bar.connection,
+                        sam_bar.window,
+                        sam_bar.gc,
+                        1, // 1 rectangle
+                        &rectangle);
+                sb_write_text(&sam_bar, 40, stdin_line);
+                xcb_flush(sam_bar.connection);
+                redraw = false;
+            }
+        }
+    }
 
     xcbft_face_holder_destroy(sam_bar.faces);
     xcb_free_gc(sam_bar.connection, sam_bar.gc);
     xcb_disconnect(sam_bar.connection);
     FcFini();
+    // if valgrind reports more than 18,612 reachable that might be a leak
 }
