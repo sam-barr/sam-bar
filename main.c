@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <unistd.h>
 
 #include <xcb/xcb.h>
+#include <xcb/xcb_aux.h>
 
 #include "fonts-for-xcb/xcbft/xcbft.h"
 
@@ -20,6 +22,7 @@ typedef struct {
     xcb_connection_t *connection;
     xcb_screen_t *screen;
     xcb_window_t window;
+    xcb_gcontext_t gc;
 
     struct xcbft_face_holder faces;
 } SamBar;
@@ -62,6 +65,25 @@ void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, char *message) {
     }
 }
 
+int sb_hexchar_to_int(char c) {
+    if('0' <= c && c <= '9') {
+        return c - '0';
+    } else if ('a' <= c && c <= 'f') {
+        return c - 'a' + 10;
+    } else if ('A' <= c && c <= 'F') {
+        return c - 'A' + 10;
+    }
+
+    return -1;
+}
+
+uint16_t sb_parse_channel(char *str) {
+    return (0x1000 * sb_hexchar_to_int(str[0]))
+         + (0x0100 * sb_hexchar_to_int(str[1]))
+         + (0x0010 * sb_hexchar_to_int(str[0]))
+         + (0x0001 * sb_hexchar_to_int(str[1]));
+}
+
 /*
  * Assumptions: strlen(message) % SB_NUM_CHARS == 0
  */
@@ -75,6 +97,12 @@ void sb_write_text(SamBar *sam_bar, int y, char *message) {
     text_color.alpha = 0xFFFF;
 
     for(; *message != '\0'; message += SB_NUM_CHARS, y += 24) {
+        if(*message == '#') {
+            text_color.red = sb_parse_channel(message += 1);
+            text_color.green = sb_parse_channel(message += 2);
+            text_color.blue = sb_parse_channel(message += 2);
+            message += 2;
+        }
         for(int i = 0; i < SB_NUM_CHARS; i++)
             buffer[i] = message[i];
         struct utf_holder text = char_to_uint32(buffer);
@@ -97,6 +125,7 @@ int main() {
     sam_bar.connection = xcb_connect(NULL, &ptr);
     sam_bar.screen = xcb_setup_roots_iterator(xcb_get_setup(sam_bar.connection)).data;
     sam_bar.window = xcb_generate_id(sam_bar.connection);
+    sam_bar.gc = xcb_generate_id(sam_bar.connection);
     char searchlist[100] = {0};
     sprintf(searchlist, "Hasklug Nerd Font:dpi=%d:size=11:antialias=true:style=bold", DPI);
     FcStrSet *fontsearch = xcbft_extract_fontsearch_list(searchlist);
@@ -105,34 +134,41 @@ int main() {
     sam_bar.faces = xcbft_load_faces(font_patterns, DPI);
     xcbft_patterns_holder_destroy(font_patterns);
 
+    xcb_visualtype_t *visual_type = xcb_aux_find_visual_by_attrs(sam_bar.screen, -1, 32);
+    int depth = xcb_aux_get_depth_of_visual(sam_bar.screen, visual_type->visual_id);
+    xcb_colormap_t colormap = xcb_generate_id(sam_bar.connection);
+    xcb_create_colormap(
+            sam_bar.connection,
+            XCB_COLORMAP_ALLOC_NONE,
+            colormap,
+            sam_bar.screen->root,
+            visual_type->visual_id);
+
     int width = 32;
     int height = sam_bar.screen->height_in_pixels;
-    int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT;
-    xcb_alloc_color_reply_t *reply = xcb_alloc_color_reply(
-            sam_bar.connection,
-            xcb_alloc_color(
-                sam_bar.connection,
-                sam_bar.screen->default_colormap,
-                0x0F0F,
-                0x1111,
-                0x1717),
-            ERROR);
-    int values[3] = {reply->pixel, reply->pixel, true};
-    free(reply);
+    int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_COLORMAP;
+    int values[4] = { 0xB10F1117, 0x0F1117, true, colormap };
     xcb_void_cookie_t cookie = xcb_create_window_checked(
             sam_bar.connection,
-            sam_bar.screen->root_depth,
+            depth,
             sam_bar.window,
             sam_bar.screen->root,
             0, 0, //top corner of screen
-            width,
-            height,
+            width, height,
             0, // border width
             XCB_WINDOW_CLASS_INPUT_OUTPUT,
-            sam_bar.screen->root_visual,
+            visual_type->visual_id,
             mask,
             values);
     sb_test_cookie(&sam_bar, cookie, "xcb_create_window_checked failed");
+    mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
+    cookie = xcb_create_gc_checked(
+            sam_bar.connection,
+            sam_bar.gc,
+            sam_bar.window,
+            mask,
+            values);
+    sb_test_cookie(&sam_bar, cookie, "xcb_create_gc_checked failed");
 
     /* setup struts so windows don't overlap the bar */
     int struts[STRUTS_NUM_ARGS] = {0};
@@ -184,13 +220,15 @@ int main() {
     xcb_flush(sam_bar.connection);
 
     /* try to do text stuff */
-    sb_write_text(&sam_bar, 40, "123456789");
-    sb_write_text(&sam_bar, 150, " 1  2 [3] 4  5  6  7  8  9 ");
+    sb_write_text(&sam_bar, 40, "XXX");
+    //sb_write_text(&sam_bar, 40, "123#FF0000456#00ff00789");
+    //sb_write_text(&sam_bar, 150, " 1  2 [3] 4  5  6  7  8  9 ");
     xcb_flush(sam_bar.connection);
 
     getchar();
 
     xcbft_face_holder_destroy(sam_bar.faces);
+    xcb_free_gc(sam_bar.connection, sam_bar.gc);
     xcb_disconnect(sam_bar.connection);
     FcFini();
 }
