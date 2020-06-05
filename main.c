@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <signal.h> 
+#include <time.h>
 
 #include <sys/timerfd.h>
 
@@ -21,12 +22,29 @@
 #define STRUTS_NUM_ARGS 12
 
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
+#define TIME(stmt) clock_t t = clock(); \
+    stmt \
+    t = clock() - t; \
+    printf("%f\n", ((double) t) / CLOCKS_PER_SEC);
+
+#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890:()[] "
+
+// these names correspond to my alacritty config
+typedef enum {
+    SB_BLACK_B = 0,
+    SB_FG,
+    SB_GREEN_N,
+    SB_PEN_MAX,
+} SB_PEN_COLOR;
 
 typedef struct {
     xcb_connection_t *connection;
     xcb_screen_t *screen;
     xcb_window_t window;
     xcb_gcontext_t gc;
+    xcb_render_picture_t picture;
+    xcb_render_picture_t pens[SB_PEN_MAX];
+    xcb_render_glyphset_t glyphset;
 
     struct xcbft_face_holder faces;
 } SamBar;
@@ -69,23 +87,33 @@ void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, char *message) {
     }
 }
 
-int sb_hexchar_to_int(char c) {
-    if('0' <= c && c <= '9') {
-        return c - '0';
-    } else if ('a' <= c && c <= 'f') {
-        return c - 'a' + 10;
-    } else if ('A' <= c && c <= 'F') {
-        return c - 'A' + 10;
-    }
+/* mostly stolen from xcbft, but I cached precomputed a bunch of stuff to make it faster */
+void sb_draw_text(
+        SamBar *sam_bar,
+        int16_t x,
+        int16_t y,
+        struct utf_holder text,
+        SB_PEN_COLOR pen_color)
+{
 
-    return -1;
-}
+    xcb_render_util_composite_text_stream_t *ts =
+        xcb_render_util_composite_text_stream(
+                sam_bar->glyphset,
+                text.length,
+                0);
 
-uint16_t sb_parse_channel(char *str) {
-    return (0x1000 * sb_hexchar_to_int(str[0]))
-         + (0x0100 * sb_hexchar_to_int(str[1]))
-         + (0x0010 * sb_hexchar_to_int(str[0]))
-         + (0x0001 * sb_hexchar_to_int(str[1]));
+    xcb_render_util_glyphs_32(ts, x, y, text.length, text.str);
+    xcb_render_util_composite_text(
+            sam_bar->connection,
+            XCB_RENDER_PICT_OP_OVER,
+            sam_bar->pens[pen_color],
+            sam_bar->picture,
+            0,
+            0, 0, // x,y
+            ts);
+
+	xcb_render_util_composite_text_free(ts);
+	xcb_render_util_disconnect(sam_bar->connection);
 }
 
 /*
@@ -94,34 +122,17 @@ uint16_t sb_parse_channel(char *str) {
 void sb_write_text(SamBar *sam_bar, int y, char *message) {
     char buffer[SB_NUM_CHARS + 1];
     buffer[SB_NUM_CHARS] = '\0';
-    xcb_render_color_t default_color;
-    default_color.red = 0x6B6B;
-    default_color.green = 0x7070;
-    default_color.blue = 0x8989;
-    default_color.alpha = 0xFFFF;
 
     for(; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += 24) {
-        xcb_render_color_t text_color;
+        SB_PEN_COLOR pen = SB_FG;
         if(*message == '#') {
-            text_color.red = sb_parse_channel(message += 1);
-            text_color.green = sb_parse_channel(message += 2);
-            text_color.blue = sb_parse_channel(message += 2);
-            text_color.alpha = 0xFFFF;
+            pen = message[1] - '0';
             message += 2;
-        } else {
-            text_color = default_color;
         }
         for(int i = 0; i < SB_NUM_CHARS; i++)
             buffer[i] = message[i];
         struct utf_holder text = char_to_uint32(buffer);
-        xcbft_draw_text(
-                sam_bar->connection,
-                sam_bar->window,
-                3, y,
-                text,
-                text_color,
-                sam_bar->faces,
-                DPI);
+        sb_draw_text(sam_bar, 3, y, text, pen);
         utf_holder_destroy(text);
     }
 }
@@ -142,6 +153,7 @@ int main() {
     sam_bar.screen = xcb_setup_roots_iterator(xcb_get_setup(sam_bar.connection)).data;
     sam_bar.window = xcb_generate_id(sam_bar.connection);
     sam_bar.gc = xcb_generate_id(sam_bar.connection);
+    sam_bar.picture = xcb_generate_id(sam_bar.connection);
     char searchlist[100] = {0};
     sprintf(searchlist, "Hasklug Nerd Font:dpi=%d:size=11:antialias=true:style=bold", DPI);
     FcStrSet *fontsearch = xcbft_extract_fontsearch_list(searchlist);
@@ -149,6 +161,9 @@ int main() {
     FcStrSetDestroy(fontsearch);
     sam_bar.faces = xcbft_load_faces(font_patterns, DPI);
     xcbft_patterns_holder_destroy(font_patterns);
+    struct utf_holder chars = char_to_uint32(CHARS);
+    sam_bar.glyphset = xcbft_load_glyphset(sam_bar.connection, sam_bar.faces, chars, DPI).glyphset;
+    utf_holder_destroy(chars);
 
     /* initialize a visual with 32 bits of depth to allow for alpha channels (transparency) */
     xcb_visualtype_t *visual_type = xcb_aux_find_visual_by_attrs(sam_bar.screen, -1, 32);
@@ -188,6 +203,40 @@ int main() {
             mask,
             values);
     sb_test_cookie(&sam_bar, cookie, "xcb_create_gc_checked failed");
+    {
+        const xcb_render_query_pict_formats_reply_t *fmt_rep =
+            xcb_render_util_query_formats(sam_bar.connection);
+        xcb_render_pictforminfo_t *fmt = xcb_render_util_find_standard_format(
+                fmt_rep,
+                XCB_PICT_STANDARD_ARGB_32);
+        mask = XCB_RENDER_CP_POLY_MODE | XCB_RENDER_CP_POLY_EDGE;
+        values[0] = XCB_RENDER_POLY_MODE_IMPRECISE;
+        values[1] = XCB_RENDER_POLY_EDGE_SMOOTH;
+        cookie = xcb_render_create_picture_checked(
+                sam_bar.connection,
+                sam_bar.picture,
+                sam_bar.window,
+                fmt->id,
+                mask,
+                values);
+        sb_test_cookie(&sam_bar, cookie, "xcb_create_picture_checked failed");
+    }
+    {
+        xcb_render_color_t color;
+        color.red = 0x6B6B;
+        color.green = 0x7070;
+        color.blue = 0x8989;
+        color.alpha = 0xFFFF;
+        sam_bar.pens[SB_BLACK_B] = xcbft_create_pen(sam_bar.connection, color);
+        color.red = 0xD2D2;
+        color.green = 0xD4D4;
+        color.blue = 0xDEDE;
+        sam_bar.pens[SB_FG] = xcbft_create_pen(sam_bar.connection, color);
+        color.red = 0xB4B4;
+        color.green = 0xBEBE;
+        color.blue = 0x8282;
+        sam_bar.pens[SB_GREEN_N] = xcbft_create_pen(sam_bar.connection, color);
+    }
 
     /* setup struts so windows don't overlap the bar */
     int struts[STRUTS_NUM_ARGS] = {0};
@@ -290,6 +339,10 @@ int main() {
 
     xcbft_face_holder_destroy(sam_bar.faces);
     xcb_free_gc(sam_bar.connection, sam_bar.gc);
+    xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
+    for(int i = 0; i < SB_PEN_MAX; i++) {
+        xcb_render_free_picture(sam_bar.connection, sam_bar.pens[i]);
+    }
     xcb_disconnect(sam_bar.connection);
     FcFini();
     // if valgrind reports more than 18,612 reachable that might be a leak
