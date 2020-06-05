@@ -134,6 +134,7 @@ int main() {
     sam_bar.faces = xcbft_load_faces(font_patterns, DPI);
     xcbft_patterns_holder_destroy(font_patterns);
 
+    /* initialize a visual with 32 bits of depth to allow for alpha channels (transparency) */
     xcb_visualtype_t *visual_type = xcb_aux_find_visual_by_attrs(sam_bar.screen, -1, 32);
     int depth = xcb_aux_get_depth_of_visual(sam_bar.screen, visual_type->visual_id);
     xcb_colormap_t colormap = xcb_generate_id(sam_bar.connection);
@@ -147,7 +148,8 @@ int main() {
     int width = 32;
     int height = sam_bar.screen->height_in_pixels;
     int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_COLORMAP;
-    int values[4] = { 0xB10F1117, 0x0F1117, true, colormap };
+    /* Then we can just use 32-bit ARGB colors directly */
+    int values[4] = { 0xB10F1117, 0xFFFFFFFF, true, colormap };
     xcb_void_cookie_t cookie = xcb_create_window_checked(
             sam_bar.connection,
             depth,
