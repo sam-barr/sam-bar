@@ -14,8 +14,6 @@
 
 #define STRUTS_NUM_ARGS 12
 
-#define sb_get_atom(sam_bar, atom_name) __sb_get_atom(sam_bar, atom_name, sizeof(atom_name)-1)
-
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
 
 typedef struct {
@@ -26,8 +24,23 @@ typedef struct {
     struct xcbft_face_holder faces;
 } SamBar;
 
+enum SB_ATOM {
+    NET_WM_WINDOW_TYPE = 0,
+    NET_WM_WINDOW_TYPE_DOCK,
+    NET_WM_STRUT_PARTIAL,
+    SB_ATOM_MAX,
+};
+
+#define SB_MAKE_ATOM_STRING(str) { str, sizeof(str) - 1 }
+struct { char *name; int len; } SB_ATOM_STRING[SB_ATOM_MAX] = {
+    SB_MAKE_ATOM_STRING("_NET_WM_WINDOW_TYPE"),
+    SB_MAKE_ATOM_STRING("_NET_WM_WINDOW_TYPE_DOCK"),
+    SB_MAKE_ATOM_STRING("_NET_WM_STRUT_PARTIAL"),
+};
+#undef SB_MAKE_ATOM_STRING
+
 enum StrutPartial {
-    LEFT,
+    LEFT = 0,
     RIGHT,
     TOP,
     BOTTOM,
@@ -40,14 +53,6 @@ enum StrutPartial {
     BOTTOM_START_X,
     BOTTOM_END_X
 };
-
-xcb_atom_t __sb_get_atom(SamBar *sam_bar, char *atom_name, int atom_name_length) {
-    xcb_intern_atom_cookie_t atom_cookie = xcb_intern_atom(sam_bar->connection, 0, atom_name_length, atom_name);
-    xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(sam_bar->connection, atom_cookie, ERROR);
-    xcb_atom_t atom = reply->atom;
-    free(reply);
-    return atom;
-}
 
 void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, char *message) {
     xcb_generic_error_t *error = xcb_request_check(sam_bar->connection, cookie);
@@ -101,6 +106,7 @@ int main() {
     xcbft_patterns_holder_destroy(font_patterns);
 
     int width = 32;
+    int height = sam_bar.screen->height_in_pixels;
     int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT;
     xcb_alloc_color_reply_t *reply = xcb_alloc_color_reply(
             sam_bar.connection,
@@ -118,10 +124,9 @@ int main() {
             sam_bar.screen->root_depth,
             sam_bar.window,
             sam_bar.screen->root,
-            0, //top corner of screen
-            0,
+            0, 0, //top corner of screen
             width,
-            sam_bar.screen->height_in_pixels,
+            height,
             0, // border width
             XCB_WINDOW_CLASS_INPUT_OUTPUT,
             sam_bar.screen->root_visual,
@@ -133,28 +138,43 @@ int main() {
     int struts[STRUTS_NUM_ARGS] = {0};
     struts[LEFT] = width;
     struts[LEFT_START_Y] = struts[RIGHT_START_Y] = 0;
-    struts[LEFT_END_Y] = struts[RIGHT_END_Y] = sam_bar.screen->height_in_pixels;
+    struts[LEFT_END_Y] = struts[RIGHT_END_Y] = height;
     struts[TOP_START_X] = struts[BOTTOM_START_X] = 0;
     struts[TOP_END_X] = struts[BOTTOM_END_X] = width;
-    xcb_atom_t NET_WM_WINDOW_TYPE = sb_get_atom(&sam_bar, "_NET_WM_WINDOW_TYPE");
-    xcb_atom_t NET_WM_WINDOW_TYPE_DOCK = sb_get_atom(&sam_bar, "_NET_WM_WINDOW_TYPE_DOCK");
-    xcb_atom_t NET_WM_STRUT_PARTIAL = sb_get_atom(&sam_bar, "_NET_WM_STRUT_PARTIAL");
+
+    /* load atoms */
+    xcb_intern_atom_cookie_t atom_cookies[SB_ATOM_MAX];
+    for(int i = 0; i < SB_ATOM_MAX; i++) {
+        atom_cookies[i] = xcb_intern_atom(
+                sam_bar.connection,
+                0, // "atom will be created if it does not already exist"
+                SB_ATOM_STRING[i].len,
+                SB_ATOM_STRING[i].name);
+    }
+    xcb_atom_t atoms[SB_ATOM_MAX];
+    for(int i = 0; i < SB_ATOM_MAX; i++) {
+        xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(
+                sam_bar.connection,
+                atom_cookies[i],
+                ERROR);
+        atoms[i] = reply->atom;
+        free(reply);
+    }
 
     xcb_change_property(
             sam_bar.connection,
             XCB_PROP_MODE_REPLACE,
             sam_bar.window,
-            NET_WM_WINDOW_TYPE,
+            atoms[NET_WM_WINDOW_TYPE],
             XCB_ATOM_ATOM,
             32, // MAGIC NUMBER??
             1, // sending 1 argument
-            &NET_WM_WINDOW_TYPE_DOCK);
-
+            &atoms[NET_WM_WINDOW_TYPE_DOCK]);
     xcb_change_property(
             sam_bar.connection,
             XCB_PROP_MODE_REPLACE,
             sam_bar.window,
-            NET_WM_STRUT_PARTIAL,
+            atoms[NET_WM_STRUT_PARTIAL],
             XCB_ATOM_CARDINAL,
             32, // MAGIC NUMBER ?
             STRUTS_NUM_ARGS,
