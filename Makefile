@@ -1,7 +1,8 @@
 libs=xcb xcb-renderutil xcb-aux fontconfig
 
 CFLAGS=-Wall -Werror -Wextra -Wpedantic -O2 \
-	   $(shell for lib in $(libs); do pkg-config --cflags $$lib; done)
+	   $(shell for lib in $(libs); do pkg-config --cflags $$lib; done) \
+	   -D_POSIX_C_SOURCE=200112L
 
 CLIBS = $(shell for lib in $(libs); do pkg-config --libs $$lib; done)
 

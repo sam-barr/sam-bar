@@ -14,13 +14,13 @@
 #include <xcb/xcb_renderutil.h>
 
 #include "fonts-for-xcb/xcbft/xcbft.h"
+#include "fonts-for-xcb/utf8_utils/utf8.h"
 
 #define SB_NUM_CHARS 3
 #define SCREEN_NUMBER 0
 #define ERROR NULL
 #define DPI 96
 #define DATE_BUF_SIZE sizeof("#1Jun#1 05#1Fri#1 07#1 38")
-#define CLOCK_MONOTONIC 1
 #define STDIN_LINE_LENGTH 50
 
 #define STRUTS_NUM_ARGS 12
@@ -165,7 +165,7 @@ void sb_handle_sigterm(int signum) {
 
 int main() {
     SamBar sam_bar;
-    int width, height;
+    int width, height, i;
 
     /* handle SIGTERM */
     signal(SIGINT, sb_handle_sigterm);
@@ -173,7 +173,6 @@ int main() {
 
     {
         /* initialize most of the xcb stuff sam_bar */
-        int i;
         int ptr = SCREEN_NUMBER;
         sam_bar.connection = xcb_connect(NULL, &ptr);
         if(xcb_connection_has_error(sam_bar.connection)) {
@@ -288,7 +287,6 @@ int main() {
     {
         /* load atoms */
         xcb_intern_atom_cookie_t atom_cookies[SB_ATOM_MAX];
-        int i;
         for(i = 0; i < SB_ATOM_MAX; i++) {
             atom_cookies[i] = xcb_intern_atom(
                     sam_bar.connection,
@@ -354,10 +352,10 @@ int main() {
         pollfds[1].fd = timerfd_create(CLOCK_MONOTONIC, 0);
         pollfds[1].events = POLLIN;
 
-        ts.it_interval.tv_sec = 1;
+        ts.it_interval.tv_sec = 1; /* fire every second */
         ts.it_interval.tv_nsec = 0;
         ts.it_value.tv_sec = 0;
-        ts.it_value.tv_nsec = 1;
+        ts.it_value.tv_nsec = 1; /* initial fire happens *basically* instantly */
         timerfd_settime(pollfds[1].fd, 0, &ts, NULL);
 
         rectangle.x = rectangle.y = 0;
@@ -409,19 +407,16 @@ int main() {
         }
     }
 
-    {
-        /* relinquish resources */
-        int i;
-        for(i = 0; i < SB_PEN_MAX; i++)
-            xcb_render_free_picture(sam_bar.connection, sam_bar.pens[i]);
-        xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
-        xcb_free_colormap(sam_bar.connection, sam_bar.colormap);
-        xcb_free_gc(sam_bar.connection, sam_bar.gc);
-        xcbft_face_holder_destroy(sam_bar.faces);
-        xcb_render_util_disconnect(sam_bar.connection);
-        xcb_disconnect(sam_bar.connection);
-        xcbft_done();
-    }
+    /* relinquish resources */
+    for(i = 0; i < SB_PEN_MAX; i++)
+        xcb_render_free_picture(sam_bar.connection, sam_bar.pens[i]);
+    xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
+    xcb_free_colormap(sam_bar.connection, sam_bar.colormap);
+    xcb_free_gc(sam_bar.connection, sam_bar.gc);
+    xcbft_face_holder_destroy(sam_bar.faces);
+    xcb_render_util_disconnect(sam_bar.connection);
+    xcb_disconnect(sam_bar.connection);
+    xcbft_done();
     /* if valgrind reports more than 18,612 reachable that might be a leak */
 
     return 0;
