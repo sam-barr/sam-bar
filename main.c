@@ -18,6 +18,7 @@
 #define SCREEN_NUMBER 0
 #define ERROR NULL
 #define DPI 96
+#define DATE_BUF_SIZE sizeof("#0Jun#0  5#0Fri#0 07#0 38")
 
 #define STRUTS_NUM_ARGS 12
 
@@ -35,7 +36,15 @@ typedef enum {
     SB_FG,
     SB_GREEN_N,
     SB_PEN_MAX,
-} SB_PEN_COLOR;
+} SB_PEN;
+
+#define SB_MAKE_COLOR(r,g,b,a) { 0x##r##r, 0x##g##g, 0x##b##b, 0x##a##a }
+xcb_render_color_t SB_PEN_COLOR[SB_PEN_MAX] = {
+    SB_MAKE_COLOR(6B, 70, 89, FF),
+    SB_MAKE_COLOR(D2, D4, DE, FF),
+    SB_MAKE_COLOR(B4, BE, 82, FF),
+};
+#undef SB_MAKE_COLOR
 
 typedef struct {
     xcb_connection_t *connection;
@@ -93,7 +102,7 @@ void sb_draw_text(
         int16_t x,
         int16_t y,
         struct utf_holder text,
-        SB_PEN_COLOR pen_color)
+        SB_PEN pen_color)
 {
 
     xcb_render_util_composite_text_stream_t *ts =
@@ -124,15 +133,17 @@ void sb_write_text(SamBar *sam_bar, int y, char *message) {
     buffer[SB_NUM_CHARS] = '\0';
 
     for(; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += 24) {
-        SB_PEN_COLOR pen = SB_FG;
+        SB_PEN pen;
         if(*message == '#') {
             pen = message[1] - '0';
             message += 2;
+        } else {
+            pen = SB_FG;
         }
         for(int i = 0; i < SB_NUM_CHARS; i++)
             buffer[i] = message[i];
         struct utf_holder text = char_to_uint32(buffer);
-        sb_draw_text(sam_bar, 3, y, text, pen);
+        sb_draw_text(sam_bar, 2, y, text, pen);
         utf_holder_destroy(text);
     }
 }
@@ -176,7 +187,7 @@ int main() {
             sam_bar.screen->root,
             visual_type->visual_id);
 
-    int width = 32;
+    int width = 34;
     int height = sam_bar.screen->height_in_pixels;
     int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_COLORMAP;
     /* Then we can just use 32-bit ARGB colors directly */
@@ -221,22 +232,8 @@ int main() {
                 values);
         sb_test_cookie(&sam_bar, cookie, "xcb_create_picture_checked failed");
     }
-    {
-        xcb_render_color_t color;
-        color.red = 0x6B6B;
-        color.green = 0x7070;
-        color.blue = 0x8989;
-        color.alpha = 0xFFFF;
-        sam_bar.pens[SB_BLACK_B] = xcbft_create_pen(sam_bar.connection, color);
-        color.red = 0xD2D2;
-        color.green = 0xD4D4;
-        color.blue = 0xDEDE;
-        sam_bar.pens[SB_FG] = xcbft_create_pen(sam_bar.connection, color);
-        color.red = 0xB4B4;
-        color.green = 0xBEBE;
-        color.blue = 0x8282;
-        sam_bar.pens[SB_GREEN_N] = xcbft_create_pen(sam_bar.connection, color);
-    }
+    for(int i = 0; i < SB_PEN_MAX; i++)
+        sam_bar.pens[i] = xcbft_create_pen(sam_bar.connection, SB_PEN_COLOR[i]);
 
     /* setup struts so windows don't overlap the bar */
     int struts[STRUTS_NUM_ARGS] = {0};
@@ -296,12 +293,14 @@ int main() {
     struct itimerspec ts;
     ts.it_interval.tv_sec = 1;
     ts.it_interval.tv_nsec = 0;
-    ts.it_value.tv_sec = 1;
-    ts.it_value.tv_nsec = 0;
+    ts.it_value.tv_sec = 0;
+    ts.it_value.tv_nsec = 1;
     timerfd_settime(pollfds[1].fd, 0, &ts, NULL);
 
     /* main loop */
-    char *stdin_line = malloc(0); // before we read stdin we free line, so start malloced
+    char *stdin_line = malloc(1); // before we read stdin we free line, so start malloced
+    *stdin_line = '\0';
+    char time_string[DATE_BUF_SIZE] = {0};
     bool redraw = false;
     while(1) {
         /* blocks until one of the fds becomes open */
@@ -314,6 +313,7 @@ int main() {
             free(stdin_line);
             size_t len = 0;
             getline(&stdin_line, &len, stdin);
+            printf("length: %ld\n", strlen(stdin_line));
             if(*stdin_line == 'X' || *stdin_line == EOF) {
                 free(stdin_line);
                 break;
@@ -321,6 +321,14 @@ int main() {
         } else if(pollfds[1].revents & POLLIN) {
             uint64_t num;
             read(pollfds[1].fd, &num, sizeof(uint64_t));
+
+            char prev_minute = time_string[DATE_BUF_SIZE-2];
+            time_t rawtime;
+            time(&rawtime);
+            struct tm *info = localtime(&rawtime);
+            strftime(time_string, DATE_BUF_SIZE, "#0%b#0 %e#0%a#0 %I#0 %M", info);
+            redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
+            /* only redraw if the minute changed */
         }
 
         if(redraw) {
@@ -331,7 +339,8 @@ int main() {
                     sam_bar.gc,
                     1, // 1 rectangle
                     &rectangle);
-            sb_write_text(&sam_bar, 40, stdin_line);
+            sb_write_text(&sam_bar, 20, stdin_line);
+            sb_write_text(&sam_bar, height - 105, time_string);
             xcb_flush(sam_bar.connection);
             redraw = false;
         }
