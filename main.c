@@ -40,7 +40,7 @@ typedef enum {
 } SB_PEN;
 
 #define SB_MAKE_COLOR(r,g,b,a) { 0x##r##r, 0x##g##g, 0x##b##b, 0x##a##a }
-xcb_render_color_t SB_PEN_COLOR[SB_PEN_MAX] = {
+const xcb_render_color_t SB_PEN_COLOR[SB_PEN_MAX] = {
     SB_MAKE_COLOR(D2, D4, DE, FF),
     SB_MAKE_COLOR(6B, 70, 89, FF),
     SB_MAKE_COLOR(B4, BE, 82, FF),
@@ -56,7 +56,7 @@ enum SB_ATOM {
 };
 
 #define SB_MAKE_ATOM_STRING(str) { str, sizeof(str) - 1 }
-struct { char *name; int len; } SB_ATOM_STRING[SB_ATOM_MAX] = {
+const struct { char *name; int len; } SB_ATOM_STRING[SB_ATOM_MAX] = {
     SB_MAKE_ATOM_STRING("_NET_WM_WINDOW_TYPE"),
     SB_MAKE_ATOM_STRING("_NET_WM_WINDOW_TYPE_DOCK"),
     SB_MAKE_ATOM_STRING("_NET_WM_STRUT_PARTIAL"),
@@ -94,7 +94,7 @@ enum StrutPartial {
     BOTTOM_END_X
 };
 
-void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, char *message) {
+void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, const char *message) {
     xcb_generic_error_t *error = xcb_request_check(sam_bar->connection, cookie);
     if(error != NULL) {
         printf("%s\n", message);
@@ -103,7 +103,7 @@ void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, char *message) {
 }
 
 /* mostly stolen from xcbft, but I precomputed a bunch of stuff to make it faster */
-void sb_draw_text(
+void sb_draw_text_single_line(
         SamBar *sam_bar,
         int16_t x,
         int16_t y,
@@ -134,7 +134,7 @@ void sb_draw_text(
  * Assumptions: strlen(message) % SB_NUM_CHARS == 0
  * This doesn't handle unicode in the slightest
  */
-void sb_write_text(SamBar *sam_bar, int y, char *message) {
+void sb_draw_text(SamBar *sam_bar, int y, char *message) {
     char buffer[SB_NUM_CHARS + 1];
     buffer[SB_NUM_CHARS] = '\0';
 
@@ -149,7 +149,7 @@ void sb_write_text(SamBar *sam_bar, int y, char *message) {
         for(int i = 0; i < SB_NUM_CHARS; i++)
             buffer[i] = message[i];
         struct utf_holder text = char_to_uint32(buffer);
-        sb_draw_text(sam_bar, 2, y, text, pen);
+        sb_draw_text_single_line(sam_bar, 2, y, text, pen);
         utf_holder_destroy(text);
     }
 }
@@ -377,8 +377,8 @@ int main() {
                     1, // 1 rectangle
                     &rectangle);
             /* write the text */
-            sb_write_text(&sam_bar, 20, stdin_line);
-            sb_write_text(&sam_bar, height - 105, time_string);
+            sb_draw_text(&sam_bar, 20, stdin_line);
+            sb_draw_text(&sam_bar, height - 105, time_string);
             xcb_flush(sam_bar.connection);
             redraw = false;
         }
