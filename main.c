@@ -105,44 +105,16 @@ void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, const char *messa
     }
 }
 
-/* mostly stolen from xcbft, but I precomputed a bunch of stuff to make it faster */
-void sb_draw_text_single_line(
-        SamBar *sam_bar,
-        int16_t x,
-        int16_t y,
-        struct utf_holder text,
-        SB_PEN pen_color)
-{
-
-    xcb_render_util_composite_text_stream_t *ts =
-        xcb_render_util_composite_text_stream(
-                sam_bar->glyphset,
-                text.length,
-                0);
-
-    xcb_render_util_glyphs_32(ts, x, y, text.length, text.str);
-    xcb_render_util_composite_text(
-            sam_bar->connection,
-            XCB_RENDER_PICT_OP_OVER,
-            sam_bar->pens[pen_color],
-            sam_bar->picture,
-            0,
-            0, 0, /* x,y */
-            ts);
-
-	xcb_render_util_composite_text_free(ts);
-}
-
 /*
  * Assumptions: strlen(message) % SB_NUM_CHARS == 0
  * This doesn't handle unicode in the slightest
  */
 void sb_draw_text(SamBar *sam_bar, int y, char *message) {
-    char buffer[SB_NUM_CHARS + 1];
+    char buffer[SB_NUM_CHARS + 1] = {0};
     SB_PEN pen;
     int i;
     struct utf_holder text;
-    buffer[SB_NUM_CHARS] = '\0';
+    xcb_render_util_composite_text_stream_t *text_stream;
 
     for(; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += 24) {
         if(*message == '#') {
@@ -153,8 +125,22 @@ void sb_draw_text(SamBar *sam_bar, int y, char *message) {
         }
         for(i = 0; i < SB_NUM_CHARS; i++)
             buffer[i] = message[i];
+
         text = char_to_uint32(buffer);
-        sb_draw_text_single_line(sam_bar, 2, y, text, pen);
+        text_stream = xcb_render_util_composite_text_stream(
+                sam_bar->glyphset,
+                text.length,
+                0);
+        xcb_render_util_glyphs_32(text_stream, 2, y, text.length, text.str);
+        xcb_render_util_composite_text(
+                sam_bar->connection,
+                XCB_RENDER_PICT_OP_OVER,
+                sam_bar->pens[pen],
+                sam_bar->picture,
+                0,
+                0, 0, /* x, y */
+                text_stream);
+        xcb_render_util_composite_text_free(text_stream);
         utf_holder_destroy(text);
     }
 }
@@ -171,8 +157,7 @@ int main() {
     signal(SIGINT, sb_handle_sigterm);
     signal(SIGTERM, sb_handle_sigterm);
 
-    {
-        /* initialize most of the xcb stuff sam_bar */
+    { /* initialize most of the xcb stuff sam_bar */
         int ptr = SCREEN_NUMBER;
         sam_bar.connection = xcb_connect(NULL, &ptr);
         if(xcb_connection_has_error(sam_bar.connection)) {
@@ -200,8 +185,7 @@ int main() {
     width = 34;
     height = sam_bar.screen->height_in_pixels;
 
-    {
-        /* load up fonts and glyphs */
+    { /* load up fonts and glyphs */
         char searchlist[100] = {0};
         FcStrSet *fontsearch;
         struct xcbft_patterns_holder font_patterns;
@@ -222,8 +206,7 @@ int main() {
         utf_holder_destroy(chars);
     }
 
-    {
-        /* initialize window */
+    { /* initialize window */
         xcb_void_cookie_t cookie;
         int mask = XCB_CW_BACK_PIXEL 
             | XCB_CW_BORDER_PIXEL 
@@ -251,8 +234,7 @@ int main() {
         sb_test_cookie(&sam_bar, cookie, "xcb_create_window_checked failed");
     }
 
-    {
-        /* initialize graphics context (used for clearing the screen) */
+    { /* initialize graphics context (used for clearing the screen) */
         xcb_void_cookie_t cookie;
         int mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
         int values[2] = { 0xB80F1117, 0xFFFFFFFF };
@@ -265,8 +247,7 @@ int main() {
         sb_test_cookie(&sam_bar, cookie, "xcb_create_gc_checked failed");
     }
 
-    {
-        /* initialize picture (used for drawing text) */
+    { /* initialize picture (used for drawing text) */
         const xcb_render_query_pict_formats_reply_t *fmt_rep =
             xcb_render_util_query_formats(sam_bar.connection);
         xcb_render_pictforminfo_t *fmt = xcb_render_util_find_standard_format(
@@ -284,8 +265,7 @@ int main() {
         sb_test_cookie(&sam_bar, cookie, "xcb_create_picture_checked failed");
     }
 
-    {
-        /* load atoms */
+    { /* load atoms */
         xcb_intern_atom_cookie_t atom_cookies[SB_ATOM_MAX];
         for(i = 0; i < SB_ATOM_MAX; i++) {
             atom_cookies[i] = xcb_intern_atom(
