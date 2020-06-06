@@ -11,6 +11,7 @@
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
+#include <xcb/xcb_renderutil.h>
 
 #include "fonts-for-xcb/xcbft/xcbft.h"
 
@@ -18,7 +19,9 @@
 #define SCREEN_NUMBER 0
 #define ERROR NULL
 #define DPI 96
-#define DATE_BUF_SIZE sizeof("#1Jun#1  5#1Fri#1 07#1 38")
+#define DATE_BUF_SIZE sizeof("#1Jun#1 05#1Fri#1 07#1 38")
+#define CLOCK_MONOTONIC 1
+#define STDIN_LINE_LENGTH 50
 
 #define STRUTS_NUM_ARGS 12
 
@@ -30,13 +33,13 @@
 
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
 
-// these names correspond to my alacritty config
+/* these names correspond to my alacritty config */
 typedef enum {
     SB_FG = 0,
     SB_BLACK_B,
     SB_GREEN_N,
     SB_CYAN_B,
-    SB_PEN_MAX,
+    SB_PEN_MAX
 } SB_PEN;
 
 #define SB_MAKE_COLOR(r,g,b,a) { 0x##r##r, 0x##g##g, 0x##b##b, 0x##a##a }
@@ -52,7 +55,7 @@ enum SB_ATOM {
     NET_WM_WINDOW_TYPE = 0,
     NET_WM_WINDOW_TYPE_DOCK,
     NET_WM_STRUT_PARTIAL,
-    SB_ATOM_MAX,
+    SB_ATOM_MAX
 };
 
 #define SB_MAKE_ATOM_STRING(str) { str, sizeof(str) - 1 }
@@ -124,7 +127,7 @@ void sb_draw_text_single_line(
             sam_bar->pens[pen_color],
             sam_bar->picture,
             0,
-            0, 0, // x,y
+            0, 0, /* x,y */
             ts);
 
 	xcb_render_util_composite_text_free(ts);
@@ -136,19 +139,21 @@ void sb_draw_text_single_line(
  */
 void sb_draw_text(SamBar *sam_bar, int y, char *message) {
     char buffer[SB_NUM_CHARS + 1];
+    SB_PEN pen;
+    int i;
+    struct utf_holder text;
     buffer[SB_NUM_CHARS] = '\0';
 
     for(; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += 24) {
-        SB_PEN pen;
         if(*message == '#') {
             pen = message[1] - '0';
             message += 2;
         } else {
             pen = SB_FG;
         }
-        for(int i = 0; i < SB_NUM_CHARS; i++)
+        for(i = 0; i < SB_NUM_CHARS; i++)
             buffer[i] = message[i];
-        struct utf_holder text = char_to_uint32(buffer);
+        text = char_to_uint32(buffer);
         sb_draw_text_single_line(sam_bar, 2, y, text, pen);
         utf_holder_destroy(text);
     }
@@ -159,13 +164,16 @@ void sb_handle_sigterm(int signum) {
 }
 
 int main() {
+    SamBar sam_bar;
+    int width, height;
+
     /* handle SIGTERM */
     signal(SIGINT, sb_handle_sigterm);
     signal(SIGTERM, sb_handle_sigterm);
 
-    SamBar sam_bar;
     {
         /* initialize most of the xcb stuff sam_bar */
+        int i;
         int ptr = SCREEN_NUMBER;
         sam_bar.connection = xcb_connect(NULL, &ptr);
         if(xcb_connection_has_error(sam_bar.connection)) {
@@ -178,7 +186,7 @@ int main() {
         sam_bar.picture = xcb_generate_id(sam_bar.connection);
         sam_bar.colormap = xcb_generate_id(sam_bar.connection);
         sam_bar.visual_id = xcb_aux_find_visual_by_attrs(sam_bar.screen, -1, 32)->visual_id;
-        for(int i = 0; i < SB_PEN_MAX; i++)
+        for(i = 0; i < SB_PEN_MAX; i++)
             sam_bar.pens[i] = xcbft_create_pen(sam_bar.connection, SB_PEN_COLOR[i]);
     }
 
@@ -190,19 +198,23 @@ int main() {
             sam_bar.screen->root,
             sam_bar.visual_id);
 
-    int width = 34;
-    int height = sam_bar.screen->height_in_pixels;
+    width = 34;
+    height = sam_bar.screen->height_in_pixels;
 
     {
         /* load up fonts and glyphs */
         char searchlist[100] = {0};
+        FcStrSet *fontsearch;
+        struct xcbft_patterns_holder font_patterns;
+        struct utf_holder chars;
+
         sprintf(searchlist, "Hasklug Nerd Font:dpi=%d:size=11:antialias=true:style=bold", DPI);
-        FcStrSet *fontsearch = xcbft_extract_fontsearch_list(searchlist);
-        struct xcbft_patterns_holder font_patterns = xcbft_query_fontsearch_all(fontsearch);
+        fontsearch = xcbft_extract_fontsearch_list(searchlist);
+        font_patterns = xcbft_query_fontsearch_all(fontsearch);
         FcStrSetDestroy(fontsearch);
         sam_bar.faces = xcbft_load_faces(font_patterns, DPI);
         xcbft_patterns_holder_destroy(font_patterns);
-        struct utf_holder chars = char_to_uint32(CHARS);
+        chars = char_to_uint32(CHARS);
         sam_bar.glyphset = xcbft_load_glyphset(
                 sam_bar.connection,
                 sam_bar.faces,
@@ -213,21 +225,26 @@ int main() {
 
     {
         /* initialize window */
-        /* jsyk: 0F1117B1 is really pretty, but doesn't match your theme */
+        xcb_void_cookie_t cookie;
         int mask = XCB_CW_BACK_PIXEL 
             | XCB_CW_BORDER_PIXEL 
             | XCB_CW_OVERRIDE_REDIRECT 
             | XCB_CW_COLORMAP;
         /* because we have a 32 bit visual/colormap, just directly use ARGB colors */
-        int values[4] = { 0xB80F1117, 0xFFFFFFFF, true, sam_bar.colormap };
-        xcb_void_cookie_t cookie = xcb_create_window_checked(
+        int values[4];
+        values[0] = 0xB80F1117; /* jsyk: 0F1117B1 is pretty, but doesn't match your theme */
+        values[1] = 0xFFFFFFFF;
+        values[2] = true;
+        values[3] = sam_bar.colormap;
+
+        cookie = xcb_create_window_checked(
                 sam_bar.connection,
-                32, // 32 bits of depth
+                32, /* 32 bits of depth */
                 sam_bar.window,
                 sam_bar.screen->root,
-                0, 0, //top corner of screen
+                0, 0, /* top corner of screen */
                 width, height,
-                0, // border width
+                0, /* border width */
                 XCB_WINDOW_CLASS_INPUT_OUTPUT,
                 sam_bar.visual_id,
                 mask,
@@ -237,9 +254,10 @@ int main() {
 
     {
         /* initialize graphics context (used for clearing the screen) */
+        xcb_void_cookie_t cookie;
         int mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
         int values[2] = { 0xB80F1117, 0xFFFFFFFF };
-        xcb_void_cookie_t cookie = xcb_create_gc_checked(
+        cookie = xcb_create_gc_checked(
                 sam_bar.connection,
                 sam_bar.gc,
                 sam_bar.window,
@@ -270,14 +288,15 @@ int main() {
     {
         /* load atoms */
         xcb_intern_atom_cookie_t atom_cookies[SB_ATOM_MAX];
-        for(int i = 0; i < SB_ATOM_MAX; i++) {
+        int i;
+        for(i = 0; i < SB_ATOM_MAX; i++) {
             atom_cookies[i] = xcb_intern_atom(
                     sam_bar.connection,
-                    0, // "atom will be created if it does not already exist"
+                    0, /* "atom will be created if it does not already exist" */
                     SB_ATOM_STRING[i].len,
                     SB_ATOM_STRING[i].name);
         }
-        for(int i = 0; i < SB_ATOM_MAX; i++) {
+        for(i = 0; i < SB_ATOM_MAX; i++) {
             xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(
                     sam_bar.connection,
                     atom_cookies[i],
@@ -287,18 +306,18 @@ int main() {
         }
     }
 
-    {
-        /* change window properties to be a dock */
-        xcb_change_property(
-                sam_bar.connection,
-                XCB_PROP_MODE_REPLACE,
-                sam_bar.window,
-                sam_bar.atoms[NET_WM_WINDOW_TYPE],
-                XCB_ATOM_ATOM,
-                32, // MAGIC NUMBER??
-                1, // sending 1 argument
-                &sam_bar.atoms[NET_WM_WINDOW_TYPE_DOCK]);
+    /* change window properties to be a dock */
+    xcb_change_property(
+            sam_bar.connection,
+            XCB_PROP_MODE_REPLACE,
+            sam_bar.window,
+            sam_bar.atoms[NET_WM_WINDOW_TYPE],
+            XCB_ATOM_ATOM,
+            32, /* MAGIC NUMBER?? */
+            1, /* sending 1 argument */
+            &sam_bar.atoms[NET_WM_WINDOW_TYPE_DOCK]);
 
+    {
         /* setup struts so windows don't overlap the bar */
         int struts[STRUTS_NUM_ARGS] = {0};
         struts[LEFT] = width;
@@ -312,7 +331,7 @@ int main() {
                 sam_bar.window,
                 sam_bar.atoms[NET_WM_STRUT_PARTIAL],
                 XCB_ATOM_CARDINAL,
-                32, // MAGIC NUMBER ?
+                32, /* MAGIC NUMBER ? */
                 STRUTS_NUM_ARGS,
                 struts);
     }
@@ -320,78 +339,90 @@ int main() {
     xcb_map_window(sam_bar.connection, sam_bar.window);
     xcb_flush(sam_bar.connection);
 
-    /* main loop setup */
-    struct pollfd pollfds[2];
-    pollfds[0].fd = STDIN_FILENO;
-    pollfds[0].events = POLLIN;
-    pollfds[1].fd = timerfd_create(CLOCK_MONOTONIC, 0);
-    pollfds[1].events = POLLIN;
-    struct itimerspec ts;
-    ts.it_interval.tv_sec = 1;
-    ts.it_interval.tv_nsec = 0;
-    ts.it_value.tv_sec = 0;
-    ts.it_value.tv_nsec = 1;
-    timerfd_settime(pollfds[1].fd, 0, &ts, NULL);
+    {
+        /* main loop setup */
+        struct pollfd pollfds[2];
+        struct itimerspec ts;
+        char time_string[DATE_BUF_SIZE] = {0};
+        char stdin_line[STDIN_LINE_LENGTH] = {0};
+        bool redraw = false;
+        unsigned long int elapsed = 0; /* hopefully I don't leave this running for > 100 years */
+        xcb_rectangle_t rectangle;
 
-    /* main loop */
-    char *stdin_line = malloc(1); // before we read stdin we free line, so start malloced
-    *stdin_line = '\0';
-    char time_string[DATE_BUF_SIZE] = {0};
-    bool redraw = false;
-    unsigned long long int elapsed = 0; // hope I don't leave this running for > 100 years
-    for(;;) {
-        /* blocks until one of the fds becomes open */
-        poll(pollfds, 2, -1);
-        if(pollfds[0].revents & POLLHUP) {
-            /* stdin died, and so do we */
-            break;
-        } else if(pollfds[0].revents & POLLIN) {
-            redraw = true;
-            free(stdin_line);
-            size_t len = 0;
-            getline(&stdin_line, &len, stdin);
-            if(*stdin_line == 'X' || *stdin_line == EOF) {
-                free(stdin_line);
+        pollfds[0].fd = STDIN_FILENO;
+        pollfds[0].events = POLLIN;
+        pollfds[1].fd = timerfd_create(CLOCK_MONOTONIC, 0);
+        pollfds[1].events = POLLIN;
+
+        ts.it_interval.tv_sec = 1;
+        ts.it_interval.tv_nsec = 0;
+        ts.it_value.tv_sec = 0;
+        ts.it_value.tv_nsec = 1;
+        timerfd_settime(pollfds[1].fd, 0, &ts, NULL);
+
+        rectangle.x = rectangle.y = 0;
+        rectangle.width = width;
+        rectangle.height = height;
+
+        /* main loop */
+        for(;;) {
+            /* blocks until one of the fds becomes open */
+            poll(pollfds, 2, -1);
+            if(pollfds[0].revents & POLLHUP) {
+                /* stdin died, and so do we */
                 break;
+            } else if(pollfds[0].revents & POLLIN) {
+                fgets(stdin_line, STDIN_LINE_LENGTH, stdin);
+                redraw = true;
+                if(*stdin_line == 'X' || *stdin_line == EOF)
+                    break;
+            } else if(pollfds[1].revents & POLLIN) {
+                uint64_t num;
+                time_t rawtime;
+                struct tm *info;
+                char prev_minute;
+
+                read(pollfds[1].fd, &num, sizeof(uint64_t));
+                elapsed += num;
+
+                prev_minute = time_string[DATE_BUF_SIZE-2];
+                time(&rawtime);
+                info = localtime(&rawtime);
+                strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
+                redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
             }
-        } else if(pollfds[1].revents & POLLIN) {
-            uint64_t num;
-            read(pollfds[1].fd, &num, sizeof(uint64_t));
-            elapsed += num;
 
-            char prev_minute = time_string[DATE_BUF_SIZE-2];
-            time_t rawtime;
-            time(&rawtime);
-            struct tm *info = localtime(&rawtime);
-            strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %e#1%a#1 %I#1 %M", info);
-            redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
-        }
-
-        if(redraw) {
-            /* clear the screen */
-            xcb_rectangle_t rectangle = { 0, 0, width, height };
-            xcb_poly_fill_rectangle(
-                    sam_bar.connection,
-                    sam_bar.window,
-                    sam_bar.gc,
-                    1, // 1 rectangle
-                    &rectangle);
-            /* write the text */
-            sb_draw_text(&sam_bar, 20, stdin_line);
-            sb_draw_text(&sam_bar, height - 105, time_string);
-            xcb_flush(sam_bar.connection);
-            redraw = false;
+            if(redraw) {
+                /* clear the screen */
+                xcb_poly_fill_rectangle(
+                        sam_bar.connection,
+                        sam_bar.window,
+                        sam_bar.gc,
+                        1, /* 1 rectangle */
+                        &rectangle);
+                /* write the text */
+                sb_draw_text(&sam_bar, 20, stdin_line);
+                sb_draw_text(&sam_bar, height - 105, time_string);
+                xcb_flush(sam_bar.connection);
+                redraw = false;
+            }
         }
     }
 
-    for(int i = 0; i < SB_PEN_MAX; i++)
-        xcb_render_free_picture(sam_bar.connection, sam_bar.pens[i]);
-    xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
-    xcb_free_colormap(sam_bar.connection, sam_bar.colormap);
-    xcb_free_gc(sam_bar.connection, sam_bar.gc);
-    xcbft_face_holder_destroy(sam_bar.faces);
-	xcb_render_util_disconnect(sam_bar.connection);
-    xcb_disconnect(sam_bar.connection);
-    FcFini();
-    // if valgrind reports more than 18,612 reachable that might be a leak
+    {
+        /* relinquish resources */
+        int i;
+        for(i = 0; i < SB_PEN_MAX; i++)
+            xcb_render_free_picture(sam_bar.connection, sam_bar.pens[i]);
+        xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
+        xcb_free_colormap(sam_bar.connection, sam_bar.colormap);
+        xcb_free_gc(sam_bar.connection, sam_bar.gc);
+        xcbft_face_holder_destroy(sam_bar.faces);
+        xcb_render_util_disconnect(sam_bar.connection);
+        xcb_disconnect(sam_bar.connection);
+        xcbft_done();
+    }
+    /* if valgrind reports more than 18,612 reachable that might be a leak */
+
+    return 0;
 }
