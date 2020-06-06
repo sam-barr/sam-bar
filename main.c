@@ -192,7 +192,7 @@ int main() {
     int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_COLORMAP;
     /* Then we can just use 32-bit ARGB colors directly */
     /* jsyk: 0F1117B1 is really pretty, but doesn't match your theme */
-    int values[4] = { 0xB10F1117, 0xFFFFFFFF, true, colormap };
+    int values[4] = { 0xB80F1117, 0xFFFFFFFF, true, colormap };
     xcb_void_cookie_t cookie = xcb_create_window_checked(
             sam_bar.connection,
             depth,
