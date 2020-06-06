@@ -22,6 +22,7 @@
 #define DPI 96
 #define DATE_BUF_SIZE sizeof("#1Jun#1 05#1Fri#1 07#1 38")
 #define STDIN_LINE_LENGTH 50
+#define VOLUME_LENGTH 15
 
 #define STRUTS_NUM_ARGS 12
 
@@ -145,17 +146,9 @@ void sb_draw_text(SamBar *sam_bar, int y, char *message) {
     }
 }
 
-void sb_handle_sigterm(int signum) {
-    exit(signum);
-}
-
 int main() {
     SamBar sam_bar;
     int width, height, i;
-
-    /* handle SIGTERM */
-    signal(SIGINT, sb_handle_sigterm);
-    signal(SIGTERM, sb_handle_sigterm);
 
     { /* initialize most of the xcb stuff sam_bar */
         int ptr = SCREEN_NUMBER;
@@ -326,18 +319,18 @@ int main() {
         xcb_rectangle_t rectangle;
         char time_string[DATE_BUF_SIZE] = {0},
              stdin_string[STDIN_LINE_LENGTH] = {0},
-             volume_string[SB_NUM_CHARS+3] = {0};
+             volume_string[VOLUME_LENGTH] = {0};
         int volume_pipe[2];
         FILE *volume_file;
-        pid_t pid;
+        pid_t volume_pid;
 
         pipe(volume_pipe);
-        pid = fork();
-        if(pid) {
+        volume_pid = fork();
+        if(volume_pid == 0) {
             dup2(volume_pipe[1], STDOUT_FILENO);
             close(volume_pipe[0]);
             close(volume_pipe[1]);
-            execl("/home/sam-barr/.local/bin/listen-volume.sh", "", (char *)NULL);
+            execl(INSTALL_DIR "/listen-volume.sh", "", (char *)NULL);
         }
         volume_file = fdopen(volume_pipe[0], "r");
 
@@ -385,7 +378,7 @@ int main() {
                 strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
                 redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
             } else if(pollfds[2].revents & POLLIN) {
-                fgets(volume_string, SB_NUM_CHARS + 3, volume_file);
+                fgets(volume_string, VOLUME_LENGTH, volume_file);
                 redraw = true;
             }
 
@@ -400,13 +393,14 @@ int main() {
                 /* write the text */
                 sb_draw_text(&sam_bar, 20, stdin_string);
                 sb_draw_text(&sam_bar, height - 105, time_string);
-                sb_draw_text(&sam_bar, height - 150, volume_string);
+                sb_draw_text(&sam_bar, height - 175, volume_string);
                 xcb_flush(sam_bar.connection);
                 redraw = false;
             }
         }
 
         fclose(volume_file);
+        kill(volume_pid, SIGTERM);
     }
 
     /* relinquish resources */

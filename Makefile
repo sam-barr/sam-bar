@@ -6,6 +6,8 @@ CFLAGS=-Wall -Werror -Wextra -Wpedantic -O2 \
 
 CLIBS = $(shell for lib in $(libs); do pkg-config --libs $$lib; done)
 
+INSTALL_DIR = $(HOME)/.local/bin
+
 all: sam-bar
 	
 xcbft.o: fonts-for-xcb/xcbft/xcbft.c 
@@ -15,11 +17,11 @@ utf8.o: fonts-for-xcb/utf8_utils/utf8.c
 	$(CC) $(CFLAGS) -c $^ -o $@
 
 sam-bar: main.c xcbft.o utf8.o
-	$(CC) $(CFLAGS) $(CLIBS) -std=c90 $^ -o $@
+	$(CC) $(CFLAGS) $(CLIBS) -std=c90 -DINSTALL_DIR=\"$(INSTALL_DIR)\" $^ -o $@
 
 install: sam-bar
-	install ./sam-bar $(HOME)/.local/bin/sam-bar
-	install ./listen-volume.sh $(HOME)/.local/bin/listen-volume.sh
+	install ./sam-bar $(INSTALL_DIR)/sam-bar
+	install ./listen-volume.sh $(INSTALL_DIR)listen-volume.sh
 	strip $(HOME)/.local/bin/sam-bar
 
 clean:

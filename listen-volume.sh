@@ -1,2 +1,3 @@
 #!/bin/bash
-pactl subscribe | rg --line-buffered sink | xargs -n5 getvolume
+getvolume
+pactl subscribe | rg --line-buffered sink | xargs -L1 getvolume
