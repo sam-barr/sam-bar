@@ -19,6 +19,7 @@ sam-bar: main.c xcbft.o utf8.o
 
 install: sam-bar
 	install ./sam-bar $(HOME)/.local/bin/sam-bar
+	install ./listen-volume.sh $(HOME)/.local/bin/listen-volume.sh
 	strip $(HOME)/.local/bin/sam-bar
 
 clean:

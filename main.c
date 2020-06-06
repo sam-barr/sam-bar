@@ -319,18 +319,34 @@ int main() {
 
     {
         /* main loop setup */
-        struct pollfd pollfds[2];
+        struct pollfd pollfds[3];
         struct itimerspec ts;
-        char time_string[DATE_BUF_SIZE] = {0};
-        char stdin_line[STDIN_LINE_LENGTH] = {0};
         bool redraw = false;
         unsigned long int elapsed = 0; /* hopefully I don't leave this running for > 100 years */
         xcb_rectangle_t rectangle;
+        char time_string[DATE_BUF_SIZE] = {0},
+             stdin_string[STDIN_LINE_LENGTH] = {0},
+             volume_string[SB_NUM_CHARS+3] = {0};
+        int volume_pipe[2];
+        FILE *volume_file;
+        pid_t pid;
+
+        pipe(volume_pipe);
+        pid = fork();
+        if(pid) {
+            dup2(volume_pipe[1], STDOUT_FILENO);
+            close(volume_pipe[0]);
+            close(volume_pipe[1]);
+            execl("/home/sam-barr/.local/bin/listen-volume.sh", "", (char *)NULL);
+        }
+        volume_file = fdopen(volume_pipe[0], "r");
 
         pollfds[0].fd = STDIN_FILENO;
         pollfds[0].events = POLLIN;
         pollfds[1].fd = timerfd_create(CLOCK_MONOTONIC, 0);
         pollfds[1].events = POLLIN;
+        pollfds[2].fd = volume_pipe[0];
+        pollfds[2].events = POLLIN;
 
         ts.it_interval.tv_sec = 1; /* fire every second */
         ts.it_interval.tv_nsec = 0;
@@ -345,14 +361,14 @@ int main() {
         /* main loop */
         for(;;) {
             /* blocks until one of the fds becomes open */
-            poll(pollfds, 2, -1);
+            poll(pollfds, 3, -1);
             if(pollfds[0].revents & POLLHUP) {
                 /* stdin died, and so do we */
                 break;
             } else if(pollfds[0].revents & POLLIN) {
-                fgets(stdin_line, STDIN_LINE_LENGTH, stdin);
+                fgets(stdin_string, STDIN_LINE_LENGTH, stdin);
                 redraw = true;
-                if(*stdin_line == 'X' || *stdin_line == EOF)
+                if(*stdin_string == 'X' || *stdin_string == EOF)
                     break;
             } else if(pollfds[1].revents & POLLIN) {
                 uint64_t num;
@@ -368,6 +384,9 @@ int main() {
                 info = localtime(&rawtime);
                 strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
                 redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
+            } else if(pollfds[2].revents & POLLIN) {
+                fgets(volume_string, SB_NUM_CHARS + 3, volume_file);
+                redraw = true;
             }
 
             if(redraw) {
@@ -379,12 +398,15 @@ int main() {
                         1, /* 1 rectangle */
                         &rectangle);
                 /* write the text */
-                sb_draw_text(&sam_bar, 20, stdin_line);
+                sb_draw_text(&sam_bar, 20, stdin_string);
                 sb_draw_text(&sam_bar, height - 105, time_string);
+                sb_draw_text(&sam_bar, height - 150, volume_string);
                 xcb_flush(sam_bar.connection);
                 redraw = false;
             }
         }
+
+        fclose(volume_file);
     }
 
     /* relinquish resources */
