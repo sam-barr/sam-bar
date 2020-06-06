@@ -4,7 +4,7 @@ CFLAGS=-Wall -Wextra -Wpedantic \
 	   $(shell pkg-config --cflags --libs xcb-xrm) \
 	   $(shell pkg-config --cflags --libs xcb-aux) \
 	   $(shell pkg-config --cflags --libs fontconfig) \
-	   -g
+	   -O2
 
 all: sam-bar
 
@@ -13,3 +13,4 @@ sam-bar: main.c
 
 install: sam-bar
 	install ./sam-bar $(HOME)/.local/bin/sam-bar
+	strip $(HOME)/.local/bin/sam-bar
