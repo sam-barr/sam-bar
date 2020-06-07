@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include <sys/timerfd.h>
+#include <sys/inotify.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
@@ -23,6 +24,8 @@
 #define DATE_BUF_SIZE sizeof("#1Jun#1 05#1Fri#1 07#1 38")
 #define STDIN_LINE_LENGTH 50
 #define VOLUME_LENGTH 15
+#define BATTERY_LENGTH 20
+#define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
 
 #define STRUTS_NUM_ARGS 12
 
@@ -34,12 +37,22 @@
 
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
 
+enum {
+    SB_POLL_STDIN = 0,
+    SB_POLL_TIMER,
+    SB_POLL_VOLUME,
+    SB_POLL_BATTERY,
+    SB_POLL_MAX
+};
+
 /* these names correspond to my alacritty config */
 typedef enum {
     SB_FG = 0,
     SB_BLACK_B,
     SB_GREEN_N,
     SB_CYAN_B,
+    SB_RED_N,
+    SB_YELLOW_N,
     SB_PEN_MAX
 } SB_PEN;
 
@@ -49,6 +62,8 @@ const xcb_render_color_t SB_PEN_COLOR[SB_PEN_MAX] = {
     SB_MAKE_COLOR(6B, 70, 89, FF),
     SB_MAKE_COLOR(B4, BE, 82, FF),
     SB_MAKE_COLOR(95, C4, CE, FF),
+    SB_MAKE_COLOR(E2, 78, 78, FF),
+    SB_MAKE_COLOR(E2, A4, 78, FF),
 };
 #undef SB_MAKE_COLOR
 
@@ -101,8 +116,8 @@ enum StrutPartial {
 void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, const char *message) {
     xcb_generic_error_t *error = xcb_request_check(sam_bar->connection, cookie);
     if(error != NULL) {
-        printf("%s\n", message);
-        exit(1);
+        fprintf(stderr, "%s\n", message);
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -312,16 +327,17 @@ int main() {
 
     {
         /* main loop setup */
-        struct pollfd pollfds[3];
+        struct pollfd pollfds[SB_POLL_MAX];
         struct itimerspec ts;
         bool redraw = false;
         unsigned long int elapsed = 0; /* hopefully I don't leave this running for > 100 years */
         xcb_rectangle_t rectangle;
         char time_string[DATE_BUF_SIZE] = {0},
              stdin_string[STDIN_LINE_LENGTH] = {0},
-             volume_string[VOLUME_LENGTH] = {0};
+             volume_string[VOLUME_LENGTH] = {0},
+             battery_string[BATTERY_LENGTH] = {0};
         int volume_pipe[2];
-        FILE *volume_file;
+        FILE *volume_file, *capacity_file, *status_file;
         pid_t volume_pid;
 
         pipe(volume_pipe);
@@ -334,12 +350,19 @@ int main() {
         }
         volume_file = fdopen(volume_pipe[0], "r");
 
-        pollfds[0].fd = STDIN_FILENO;
-        pollfds[0].events = POLLIN;
-        pollfds[1].fd = timerfd_create(CLOCK_MONOTONIC, 0);
-        pollfds[1].events = POLLIN;
-        pollfds[2].fd = volume_pipe[0];
-        pollfds[2].events = POLLIN;
+        pollfds[SB_POLL_STDIN].fd = STDIN_FILENO;
+        pollfds[SB_POLL_STDIN].events = POLLIN;
+        pollfds[SB_POLL_TIMER].fd = timerfd_create(CLOCK_MONOTONIC, 0);
+        pollfds[SB_POLL_TIMER].events = POLLIN;
+        pollfds[SB_POLL_VOLUME].fd = volume_pipe[0];
+        pollfds[SB_POLL_VOLUME].events = POLLIN;
+        pollfds[SB_POLL_BATTERY].fd = inotify_init1(IN_NONBLOCK);
+        pollfds[SB_POLL_BATTERY].events = POLLIN;
+
+        capacity_file = fopen(BATTERY_DIRECTORY "/capacity", "r");
+        status_file = fopen(BATTERY_DIRECTORY "/status", "r");
+        inotify_add_watch(pollfds[SB_POLL_BATTERY].fd, BATTERY_DIRECTORY "/uevent", IN_ACCESS);
+        strcpy(battery_string, "#1Bat");
 
         ts.it_interval.tv_sec = 1; /* fire every second */
         ts.it_interval.tv_nsec = 0;
@@ -354,22 +377,22 @@ int main() {
         /* main loop */
         for(;;) {
             /* blocks until one of the fds becomes open */
-            poll(pollfds, 3, -1);
-            if(pollfds[0].revents & POLLHUP) {
+            poll(pollfds, SB_POLL_MAX, -1);
+            if(pollfds[SB_POLL_STDIN].revents & POLLHUP) {
                 /* stdin died, and so do we */
                 break;
-            } else if(pollfds[0].revents & POLLIN) {
+            } else if(pollfds[SB_POLL_STDIN].revents & POLLIN) {
                 fgets(stdin_string, STDIN_LINE_LENGTH, stdin);
                 redraw = true;
                 if(*stdin_string == 'X' || *stdin_string == EOF)
                     break;
-            } else if(pollfds[1].revents & POLLIN) {
+            } else if(pollfds[SB_POLL_TIMER].revents & POLLIN) {
                 uint64_t num;
                 time_t rawtime;
                 struct tm *info;
                 char prev_minute;
 
-                read(pollfds[1].fd, &num, sizeof(uint64_t));
+                read(pollfds[SB_POLL_TIMER].fd, &num, sizeof(uint64_t));
                 elapsed += num;
 
                 prev_minute = time_string[DATE_BUF_SIZE-2];
@@ -377,9 +400,53 @@ int main() {
                 info = localtime(&rawtime);
                 strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
                 redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
-            } else if(pollfds[2].revents & POLLIN) {
+            } else if(pollfds[SB_POLL_VOLUME].revents & POLLIN) {
                 fgets(volume_string, VOLUME_LENGTH, volume_file);
                 redraw = true;
+            } else if(pollfds[SB_POLL_BATTERY].revents & POLLIN) {
+                /* read the battery when the status changes */
+                struct inotify_event event;
+                read(pollfds[SB_POLL_BATTERY].fd, &event, sizeof(struct inotify_event));
+                goto SB_READ_BATTERY;
+            }
+
+
+            /* read the battery every 30 seconds, starting the first second */
+            if(elapsed % 30 == 1) {
+                char status, capacity[4];
+SB_READ_BATTERY:
+
+                status = fgetc(status_file);
+                fgets(capacity, 4, capacity_file);
+                if(capacity[2] == '0') {
+                    /* battery full */
+                    strcpy(battery_string + 5, "#2Ful");
+                } else {
+                    battery_string[5] = '#';
+                    /* decide color for percentage */
+                    if('9' >= capacity[0] && capacity[0] >= '8')
+                        battery_string[6] = '2';
+                    else if ('7' >= capacity[0] && capacity[0] >= '3')
+                        battery_string[6] = '5';
+                    else
+                        battery_string[6] = '4';
+                    /* append the capacity */
+                    /* TODO: single digit? */
+                    battery_string[7] = capacity[0];
+                    battery_string[8] = capacity[1];
+                    battery_string[9] = '%';
+                    /* Display if the battery is charging */
+                    if(status == 'C')
+                        strcpy(battery_string + 10, "#5Chg");
+                    else
+                        battery_string[10] = '\0';
+                }
+
+                redraw = true;
+                fflush(status_file);
+                rewind(status_file);
+                fflush(capacity_file);
+                rewind(capacity_file);
             }
 
             if(redraw) {
@@ -394,12 +461,15 @@ int main() {
                 sb_draw_text(&sam_bar, 20, stdin_string);
                 sb_draw_text(&sam_bar, height - 105, time_string);
                 sb_draw_text(&sam_bar, height - 175, volume_string);
+                sb_draw_text(&sam_bar, height - 270, battery_string);
                 xcb_flush(sam_bar.connection);
                 redraw = false;
             }
         }
 
         fclose(volume_file);
+        fclose(status_file);
+        fclose(capacity_file);
         kill(volume_pid, SIGTERM);
     }
 
@@ -415,5 +485,5 @@ int main() {
     xcbft_done();
     /* if valgrind reports more than 18,612 reachable that might be a leak */
 
-    return 0;
+    return EXIT_SUCCESS;
 }
