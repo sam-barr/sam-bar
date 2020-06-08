@@ -26,6 +26,9 @@
 #define VOLUME_LENGTH 15
 #define BATTERY_LENGTH 20
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
+#define FONT_HEIGHT 20
+#define LINE_PADDING 4
+#define LINE_HEIGHT (FONT_HEIGHT + LINE_PADDING)
 
 #define STRUTS_NUM_ARGS 12
 
@@ -67,7 +70,7 @@ const xcb_render_color_t SB_PEN_COLOR[SB_PEN_MAX] = {
 };
 #undef SB_MAKE_COLOR
 
-enum SB_ATOM {
+enum {
     NET_WM_WINDOW_TYPE = 0,
     NET_WM_WINDOW_TYPE_DOCK,
     NET_WM_STRUT_PARTIAL,
@@ -132,7 +135,7 @@ void sb_draw_text(SamBar *sam_bar, int y, char *message) {
     struct utf_holder text;
     xcb_render_util_composite_text_stream_t *text_stream;
 
-    for (; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += 24) {
+    for (; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += LINE_HEIGHT) {
         if (*message == '#') {
             pen = message[1] - '0';
             message += 2;
@@ -161,7 +164,7 @@ void sb_draw_text(SamBar *sam_bar, int y, char *message) {
     }
 }
 
-int main() {
+int main(void) {
     SamBar sam_bar;
     int width, height, i;
 
@@ -458,6 +461,7 @@ SB_READ_BATTERY:
             }
 
             if (redraw) {
+                int y = height - LINE_PADDING;
                 /* clear the screen */
                 xcb_poly_fill_rectangle(
                         sam_bar.connection,
@@ -466,10 +470,14 @@ SB_READ_BATTERY:
                         1, /* 1 rectangle */
                         &rectangle);
                 /* write the text */
-                sb_draw_text(&sam_bar, 20, stdin_string);
-                sb_draw_text(&sam_bar, height - 105, time_string);
-                sb_draw_text(&sam_bar, height - 175, volume_string);
-                sb_draw_text(&sam_bar, height - 270, battery_string);
+                sb_draw_text(&sam_bar, FONT_HEIGHT, stdin_string);
+                y -= 4 * LINE_HEIGHT;
+                sb_draw_text(&sam_bar, y, time_string);
+                y -= 3 * LINE_HEIGHT;
+                sb_draw_text(&sam_bar, y, volume_string);
+                y -= 3 * LINE_HEIGHT;
+                if (battery_string[10] != '\0') y -= LINE_HEIGHT;
+                sb_draw_text( &sam_bar, y, battery_string);
                 xcb_flush(sam_bar.connection);
                 redraw = false;
             }
