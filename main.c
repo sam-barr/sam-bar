@@ -115,7 +115,7 @@ enum StrutPartial {
 
 void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, const char *message) {
     xcb_generic_error_t *error = xcb_request_check(sam_bar->connection, cookie);
-    if(error != NULL) {
+    if (error != NULL) {
         fprintf(stderr, "%s\n", message);
         exit(EXIT_FAILURE);
     }
@@ -132,14 +132,14 @@ void sb_draw_text(SamBar *sam_bar, int y, char *message) {
     struct utf_holder text;
     xcb_render_util_composite_text_stream_t *text_stream;
 
-    for(; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += 24) {
-        if(*message == '#') {
+    for (; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += 24) {
+        if (*message == '#') {
             pen = message[1] - '0';
             message += 2;
         } else {
             pen = SB_FG;
         }
-        for(i = 0; i < SB_NUM_CHARS; i++)
+        for (i = 0; i < SB_NUM_CHARS; i++)
             buffer[i] = message[i];
 
         text = char_to_uint32(buffer);
@@ -168,7 +168,7 @@ int main() {
     { /* initialize most of the xcb stuff sam_bar */
         int ptr = SCREEN_NUMBER;
         sam_bar.connection = xcb_connect(NULL, &ptr);
-        if(xcb_connection_has_error(sam_bar.connection)) {
+        if (xcb_connection_has_error(sam_bar.connection)) {
             xcb_disconnect(sam_bar.connection);
             return -1;
         }
@@ -178,7 +178,7 @@ int main() {
         sam_bar.picture = xcb_generate_id(sam_bar.connection);
         sam_bar.colormap = xcb_generate_id(sam_bar.connection);
         sam_bar.visual_id = xcb_aux_find_visual_by_attrs(sam_bar.screen, -1, 32)->visual_id;
-        for(i = 0; i < SB_PEN_MAX; i++)
+        for (i = 0; i < SB_PEN_MAX; i++)
             sam_bar.pens[i] = xcbft_create_pen(sam_bar.connection, SB_PEN_COLOR[i]);
     }
 
@@ -275,14 +275,14 @@ int main() {
 
     { /* load atoms */
         xcb_intern_atom_cookie_t atom_cookies[SB_ATOM_MAX];
-        for(i = 0; i < SB_ATOM_MAX; i++) {
+        for (i = 0; i < SB_ATOM_MAX; i++) {
             atom_cookies[i] = xcb_intern_atom(
                     sam_bar.connection,
                     0, /* "atom will be created if it does not already exist" */
                     SB_ATOM_STRING[i].len,
                     SB_ATOM_STRING[i].name);
         }
-        for(i = 0; i < SB_ATOM_MAX; i++) {
+        for (i = 0; i < SB_ATOM_MAX; i++) {
             xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(
                     sam_bar.connection,
                     atom_cookies[i],
@@ -342,7 +342,7 @@ int main() {
 
         pipe(volume_pipe);
         volume_pid = fork();
-        if(volume_pid == 0) {
+        if (volume_pid == 0) {
             dup2(volume_pipe[1], STDOUT_FILENO);
             close(volume_pipe[0]);
             close(volume_pipe[1]);
@@ -375,18 +375,18 @@ int main() {
         rectangle.height = height;
 
         /* main loop */
-        for(;;) {
+        for (;;) {
             /* blocks until one of the fds becomes open */
             poll(pollfds, SB_POLL_MAX, -1);
-            if(pollfds[SB_POLL_STDIN].revents & POLLHUP) {
+            if (pollfds[SB_POLL_STDIN].revents & POLLHUP) {
                 /* stdin died, and so do we */
                 break;
-            } else if(pollfds[SB_POLL_STDIN].revents & POLLIN) {
+            } else if (pollfds[SB_POLL_STDIN].revents & POLLIN) {
                 fgets(stdin_string, STDIN_LINE_LENGTH, stdin);
                 redraw = true;
-                if(*stdin_string == 'X' || *stdin_string == EOF)
+                if (*stdin_string == 'X' || *stdin_string == EOF)
                     break;
-            } else if(pollfds[SB_POLL_TIMER].revents & POLLIN) {
+            } else if (pollfds[SB_POLL_TIMER].revents & POLLIN) {
                 uint64_t num;
                 time_t rawtime;
                 struct tm *info;
@@ -400,10 +400,10 @@ int main() {
                 info = localtime(&rawtime);
                 strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
                 redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
-            } else if(pollfds[SB_POLL_VOLUME].revents & POLLIN) {
+            } else if (pollfds[SB_POLL_VOLUME].revents & POLLIN) {
                 fgets(volume_string, VOLUME_LENGTH, volume_file);
                 redraw = true;
-            } else if(pollfds[SB_POLL_BATTERY].revents & POLLIN) {
+            } else if (pollfds[SB_POLL_BATTERY].revents & POLLIN) {
                 /* read the battery when the status changes */
                 struct inotify_event event;
                 read(pollfds[SB_POLL_BATTERY].fd, &event, sizeof(struct inotify_event));
@@ -412,31 +412,39 @@ int main() {
 
 
             /* read the battery every 30 seconds, starting the first second */
-            if(elapsed % 30 == 1) {
+            if (elapsed % 30 == 1) {
                 char status, capacity[4];
 SB_READ_BATTERY:
 
                 status = fgetc(status_file);
                 fgets(capacity, 4, capacity_file);
-                if(capacity[2] == '0') {
+                if (capacity[2] == '0') {
                     /* battery full */
                     strcpy(battery_string + 5, "#2Ful");
                 } else {
                     battery_string[5] = '#';
                     /* decide color for percentage */
-                    if('9' >= capacity[0] && capacity[0] >= '8')
-                        battery_string[6] = '2';
-                    else if ('7' >= capacity[0] && capacity[0] >= '3')
-                        battery_string[6] = '5';
-                    else
+                    if (capacity[1] == '\n') /* bat < 10 */
                         battery_string[6] = '4';
+                    else if ('9' >= capacity[0] && capacity[0] >= '8') /* 100 > bat >= 80 */
+                        battery_string[6] = '2';
+                    else if ('7' >= capacity[0] && capacity[0] >= '3') /* 80 > bat >= 30 */
+                        battery_string[6] = '5';
+                    else if ('3' >= capacity[0] && capacity[0] >= '1') /* 30 > bat >= 10 */
+                        battery_string[6] = '4';
+
                     /* append the capacity */
-                    /* TODO: single digit? */
-                    battery_string[7] = capacity[0];
-                    battery_string[8] = capacity[1];
+                    if (capacity[1] == '\n') {
+                        /* single digit, add a space */
+                        battery_string[7] = ' ';
+                        battery_string[8] = capacity[0];
+                    } else {
+                        battery_string[7] = capacity[0];
+                        battery_string[8] = capacity[1];
+                    }
                     battery_string[9] = '%';
                     /* Display if the battery is charging */
-                    if(status == 'C')
+                    if (status == 'C')
                         strcpy(battery_string + 10, "#5Chg");
                     else
                         battery_string[10] = '\0';
@@ -449,7 +457,7 @@ SB_READ_BATTERY:
                 rewind(capacity_file);
             }
 
-            if(redraw) {
+            if (redraw) {
                 /* clear the screen */
                 xcb_poly_fill_rectangle(
                         sam_bar.connection,
@@ -474,7 +482,7 @@ SB_READ_BATTERY:
     }
 
     /* relinquish resources */
-    for(i = 0; i < SB_PEN_MAX; i++)
+    for (i = 0; i < SB_PEN_MAX; i++)
         xcb_render_free_picture(sam_bar.connection, sam_bar.pens[i]);
     xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
     xcb_free_colormap(sam_bar.connection, sam_bar.colormap);
