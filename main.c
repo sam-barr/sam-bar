@@ -98,7 +98,7 @@ typedef struct {
 
     struct xcbft_face_holder face_holder;
 
-    int font_height, line_padding;
+    int font_height, line_padding, x_off;
 } SamBar;
 
 enum StrutPartial {
@@ -151,7 +151,7 @@ void sb_draw_text(SamBar *sam_bar, int y, char *message) {
                 sam_bar->glyphset,
                 text.length,
                 0);
-        xcb_render_util_glyphs_32(text_stream, 2, y, text.length, text.str);
+        xcb_render_util_glyphs_32(text_stream, sam_bar->x_off, y, text.length, text.str);
         xcb_render_util_composite_text(
                 sam_bar->connection,
                 XCB_RENDER_PICT_OP_OVER,
@@ -186,7 +186,6 @@ int main(void) {
             sam_bar.pens[i] = xcbft_create_pen(sam_bar.connection, SB_PEN_COLOR[i]);
     }
 
-    width = 34;
     height = sam_bar.screen->height_in_pixels;
 
     /* initialize a 32 bit colormap */
@@ -209,14 +208,18 @@ int main(void) {
         if (strcmp("low", current_display) == 0) {
             sam_bar.font_height = 14;
             sam_bar.line_padding = 10;
+            sam_bar.x_off = 2;
             size = 11;
             dpi = 96;
+            width = 34;
         } else if (strcmp("high", current_display) == 0) {
             /* TODO these are educated guesses */
             sam_bar.font_height = 37;
             sam_bar.line_padding = 26;
+            sam_bar.x_off = 5;
             size = 8;
             dpi = 336;
+            width = 90;
         } else {
             printf("Unknown CURRENT_DISPLAY: %s\n", current_display);
             exit(1);
@@ -507,6 +510,7 @@ SB_READ_BATTERY:
             }
         }
 
+        /* relinquish loop resources */
         fclose(volume_file);
         fclose(status_file);
         fclose(capacity_file);
