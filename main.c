@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <string.h>
 #include <poll.h>
 #include <signal.h> 
 #include <time.h>
@@ -14,8 +15,12 @@
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_renderutil.h>
 
-#include "fonts-for-xcb/xcbft/xcbft.h"
+#include <fontconfig/fontconfig.h>
+#include <ft2build.h>
+#include <freetype/freetype.h>
+
 #include "fonts-for-xcb/utf8_utils/utf8.h"
+#include "fonts-for-xcb/xcbft/xcbft.h"
 
 #define SB_NUM_CHARS 3
 #define SCREEN_NUMBER 0
@@ -26,8 +31,8 @@
 #define VOLUME_LENGTH 15
 #define BATTERY_LENGTH 20
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
-#define FONT_HEIGHT 20
-#define LINE_PADDING 4
+#define FONT_HEIGHT 15
+#define LINE_PADDING 9
 #define LINE_HEIGHT (FONT_HEIGHT + LINE_PADDING)
 
 #define STRUTS_NUM_ARGS 12
@@ -98,7 +103,7 @@ typedef struct {
     xcb_render_picture_t pens[SB_PEN_MAX];
     xcb_render_glyphset_t glyphset;
 
-    struct xcbft_face_holder faces;
+    struct xcbft_face_holder face_holder;
 } SamBar;
 
 enum StrutPartial {
@@ -185,6 +190,9 @@ int main(void) {
             sam_bar.pens[i] = xcbft_create_pen(sam_bar.connection, SB_PEN_COLOR[i]);
     }
 
+    width = 34;
+    height = sam_bar.screen->height_in_pixels;
+
     /* initialize a 32 bit colormap */
     xcb_create_colormap(
             sam_bar.connection,
@@ -192,9 +200,6 @@ int main(void) {
             sam_bar.colormap,
             sam_bar.screen->root,
             sam_bar.visual_id);
-
-    width = 34;
-    height = sam_bar.screen->height_in_pixels;
 
     { /* load up fonts and glyphs */
         char searchlist[100] = {0};
@@ -206,16 +211,26 @@ int main(void) {
         fontsearch = xcbft_extract_fontsearch_list(searchlist);
         font_patterns = xcbft_query_fontsearch_all(fontsearch);
         FcStrSetDestroy(fontsearch);
-        sam_bar.faces = xcbft_load_faces(font_patterns, DPI);
+        sam_bar.face_holder = xcbft_load_faces(font_patterns, DPI);
         xcbft_patterns_holder_destroy(font_patterns);
         chars = char_to_uint32(CHARS);
         sam_bar.glyphset = xcbft_load_glyphset(
                 sam_bar.connection,
-                sam_bar.faces,
+                sam_bar.face_holder,
                 chars,
                 DPI).glyphset;
         utf_holder_destroy(chars);
     }
+
+    /*
+    {
+        int x = sam_bar.face_holder.faces[0]->ascender - sam_bar.face_holder.faces[0]->descender;
+        int y = sam_bar.face_holder.faces[0]->bbox.yMax;
+        printf("%d\n", x);
+        printf("%d\n", y);
+    }
+    exit(1);
+    */
 
     { /* initialize window */
         xcb_void_cookie_t cookie;
@@ -328,8 +343,7 @@ int main(void) {
     xcb_map_window(sam_bar.connection, sam_bar.window);
     xcb_flush(sam_bar.connection);
 
-    {
-        /* main loop setup */
+    { /* main loop setup */
         struct pollfd pollfds[SB_POLL_MAX];
         struct itimerspec ts;
         bool redraw = false;
@@ -495,7 +509,7 @@ SB_READ_BATTERY:
     xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
     xcb_free_colormap(sam_bar.connection, sam_bar.colormap);
     xcb_free_gc(sam_bar.connection, sam_bar.gc);
-    xcbft_face_holder_destroy(sam_bar.faces);
+    xcbft_face_holder_destroy(sam_bar.face_holder);
     xcb_render_util_disconnect(sam_bar.connection);
     xcb_disconnect(sam_bar.connection);
     xcbft_done();
