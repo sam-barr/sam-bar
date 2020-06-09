@@ -38,10 +38,6 @@
 #define STRUTS_NUM_ARGS 12
 
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
-#define TIME(stmt) clock_t t = clock(); \
-    stmt \
-    t = clock() - t; \
-    printf("%f\n", ((double) t) / CLOCKS_PER_SEC);
 
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
 
@@ -221,16 +217,6 @@ int main(void) {
                 DPI).glyphset;
         utf_holder_destroy(chars);
     }
-
-    /*
-    {
-        int x = sam_bar.face_holder.faces[0]->ascender - sam_bar.face_holder.faces[0]->descender;
-        int y = sam_bar.face_holder.faces[0]->bbox.yMax;
-        printf("%d\n", x);
-        printf("%d\n", y);
-    }
-    exit(1);
-    */
 
     { /* initialize window */
         xcb_void_cookie_t cookie;
@@ -441,14 +427,18 @@ SB_READ_BATTERY:
                 } else {
                     battery_string[5] = '#';
                     /* decide color for percentage */
-                    if (capacity[1] == '\n') /* bat < 10 */
-                        battery_string[6] = '4';
-                    else if ('9' >= capacity[0] && capacity[0] >= '8') /* 100 > bat >= 80 */
-                        battery_string[6] = '2';
-                    else if ('7' >= capacity[0] && capacity[0] >= '3') /* 80 > bat >= 30 */
-                        battery_string[6] = '5';
-                    else if ('3' >= capacity[0] && capacity[0] >= '1') /* 30 > bat >= 10 */
-                        battery_string[6] = '4';
+                    switch (capacity[1]) {
+                        case  '9':
+                        case  '8': battery_string[6] = '2'; break;
+                        case  '7':
+                        case  '6':
+                        case  '5':
+                        case  '4':
+                        case  '3': battery_string[6] = '5'; break;
+                        case  '2':
+                        case  '1':
+                        case '\n': battery_string[6] = '4'; break;
+                    }
 
                     /* append the capacity */
                     if (capacity[1] == '\n') {
@@ -487,9 +477,9 @@ SB_READ_BATTERY:
                 sb_draw_text(&sam_bar, FONT_HEIGHT, stdin_string);
                 y -= 4 * LINE_HEIGHT;
                 sb_draw_text(&sam_bar, y, time_string);
-                y -= 3 * LINE_HEIGHT;
+                y -= 2 * LINE_HEIGHT + FONT_HEIGHT;
                 sb_draw_text(&sam_bar, y, volume_string);
-                y -= 3 * LINE_HEIGHT;
+                y -= 2 * LINE_HEIGHT + FONT_HEIGHT;
                 if (battery_string[10] != '\0') y -= LINE_HEIGHT;
                 sb_draw_text( &sam_bar, y, battery_string);
                 xcb_flush(sam_bar.connection);
