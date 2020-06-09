@@ -25,15 +25,12 @@
 #define SB_NUM_CHARS 3
 #define SCREEN_NUMBER 0
 #define ERROR NULL
-#define DPI 96
 #define DATE_BUF_SIZE sizeof("#1Jun#1 05#1Fri#1 07#1 38")
 #define STDIN_LINE_LENGTH 50
 #define VOLUME_LENGTH 15
 #define BATTERY_LENGTH 20
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
-#define FONT_HEIGHT 15
-#define LINE_PADDING 9
-#define LINE_HEIGHT (FONT_HEIGHT + LINE_PADDING)
+#define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
 
 #define STRUTS_NUM_ARGS 12
 
@@ -100,6 +97,8 @@ typedef struct {
     xcb_render_glyphset_t glyphset;
 
     struct xcbft_face_holder face_holder;
+
+    int font_height, line_padding;
 } SamBar;
 
 enum StrutPartial {
@@ -136,7 +135,8 @@ void sb_draw_text(SamBar *sam_bar, int y, char *message) {
     struct utf_holder text;
     xcb_render_util_composite_text_stream_t *text_stream;
 
-    for (; *message != '\0' && *message != '\n'; message += SB_NUM_CHARS, y += LINE_HEIGHT) {
+    for (; *message != '\0' && *message != '\n';
+            message += SB_NUM_CHARS, y += sam_bar->font_height + sam_bar->line_padding) {
         if (*message == '#') {
             pen = message[1] - '0';
             message += 2;
@@ -198,23 +198,42 @@ int main(void) {
             sam_bar.visual_id);
 
     { /* load up fonts and glyphs */
-        char searchlist[100] = {0};
+        char searchlist[100] = {0},
+             *current_display;
         FcStrSet *fontsearch;
         struct xcbft_patterns_holder font_patterns;
         struct utf_holder chars;
+        int dpi, size;
 
-        sprintf(searchlist, "Hasklug Nerd Font:dpi=%d:size=11:antialias=true:style=bold", DPI);
+        current_display = getenv("CURRENT_DISPLAY");
+        if (strcmp("low", current_display) == 0) {
+            sam_bar.font_height = 14;
+            sam_bar.line_padding = 10;
+            size = 11;
+            dpi = 96;
+        } else if (strcmp("high", current_display) == 0) {
+            /* TODO these are educated guesses */
+            sam_bar.font_height = 37;
+            sam_bar.line_padding = 26;
+            size = 8;
+            dpi = 336;
+        } else {
+            printf("Unknown CURRENT_DISPLAY: %s\n", current_display);
+            exit(1);
+        }
+
+        sprintf(searchlist, FONT_TEMPLATE, dpi, size);
         fontsearch = xcbft_extract_fontsearch_list(searchlist);
         font_patterns = xcbft_query_fontsearch_all(fontsearch);
         FcStrSetDestroy(fontsearch);
-        sam_bar.face_holder = xcbft_load_faces(font_patterns, DPI);
+        sam_bar.face_holder = xcbft_load_faces(font_patterns, dpi);
         xcbft_patterns_holder_destroy(font_patterns);
         chars = char_to_uint32(CHARS);
         sam_bar.glyphset = xcbft_load_glyphset(
                 sam_bar.connection,
                 sam_bar.face_holder,
                 chars,
-                DPI).glyphset;
+                dpi).glyphset;
         utf_holder_destroy(chars);
     }
 
@@ -465,7 +484,7 @@ SB_READ_BATTERY:
             }
 
             if (redraw) {
-                int y = height - LINE_PADDING;
+                int y = height;
                 /* clear the screen */
                 xcb_poly_fill_rectangle(
                         sam_bar.connection,
@@ -474,13 +493,14 @@ SB_READ_BATTERY:
                         1, /* 1 rectangle */
                         &rectangle);
                 /* write the text */
-                sb_draw_text(&sam_bar, FONT_HEIGHT, stdin_string);
-                y -= 4 * LINE_HEIGHT;
+                sb_draw_text(&sam_bar, sam_bar.font_height, stdin_string);
+                y -= 4 * sam_bar.font_height + 5 * sam_bar.line_padding;
                 sb_draw_text(&sam_bar, y, time_string);
-                y -= 2 * LINE_HEIGHT + FONT_HEIGHT;
+                y -= 3 * sam_bar.font_height + 2 * sam_bar.line_padding;
                 sb_draw_text(&sam_bar, y, volume_string);
-                y -= 2 * LINE_HEIGHT + FONT_HEIGHT;
-                if (battery_string[10] != '\0') y -= LINE_HEIGHT;
+                y -= 3 * sam_bar.font_height + 2 * sam_bar.line_padding;
+                if (battery_string[10] != '\0')
+                    y -= sam_bar.font_height + sam_bar.line_padding;
                 sb_draw_text( &sam_bar, y, battery_string);
                 xcb_flush(sam_bar.connection);
                 redraw = false;
