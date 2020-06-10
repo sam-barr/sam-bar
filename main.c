@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <poll.h>
-#include <signal.h> 
+#include <signal.h>
 #include <time.h>
 
 #include <sys/timerfd.h>
@@ -31,6 +31,8 @@
 #define BATTERY_LENGTH 20
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
+#define BACKGROUND_COLOR 0xB80F1117
+/* jsyk: 0F1117B8 is pretty, but doesn't match your theme */
 
 #define STRUTS_NUM_ARGS 12
 
@@ -57,14 +59,14 @@ typedef enum {
     SB_PEN_MAX
 } SB_PEN;
 
-#define SB_MAKE_COLOR(r,g,b,a) { 0x##r##r, 0x##g##g, 0x##b##b, 0x##a##a }
+#define SB_MAKE_COLOR(r,g,b) { 0x##r##r, 0x##g##g, 0x##b##b, 0xFFFF }
 const xcb_render_color_t SB_PEN_COLOR[SB_PEN_MAX] = {
-    SB_MAKE_COLOR(D2, D4, DE, FF),
-    SB_MAKE_COLOR(6B, 70, 89, FF),
-    SB_MAKE_COLOR(B4, BE, 82, FF),
-    SB_MAKE_COLOR(95, C4, CE, FF),
-    SB_MAKE_COLOR(E2, 78, 78, FF),
-    SB_MAKE_COLOR(E2, A4, 78, FF),
+    SB_MAKE_COLOR(D2, D4, DE),
+    SB_MAKE_COLOR(6B, 70, 89),
+    SB_MAKE_COLOR(B4, BE, 82),
+    SB_MAKE_COLOR(95, C4, CE),
+    SB_MAKE_COLOR(E2, 78, 78),
+    SB_MAKE_COLOR(E2, A4, 78),
 };
 #undef SB_MAKE_COLOR
 
@@ -83,6 +85,11 @@ const struct { char *name; int len; } SB_ATOM_STRING[SB_ATOM_MAX] = {
 };
 #undef SB_MAKE_ATOM_STRING
 
+/*
+ * Struct which owns all the critical stuff
+ * Basically instead of having all of these as globals;
+ * I stick them all in a struct and pass that around
+ */
 typedef struct {
     xcb_connection_t *connection;
     xcb_screen_t *screen;
@@ -174,7 +181,7 @@ int main(void) {
         sam_bar.connection = xcb_connect(NULL, &ptr);
         if (xcb_connection_has_error(sam_bar.connection)) {
             xcb_disconnect(sam_bar.connection);
-            return -1;
+            return EXIT_FAILURE;
         }
         sam_bar.screen = xcb_setup_roots_iterator(xcb_get_setup(sam_bar.connection)).data;
         sam_bar.window = xcb_generate_id(sam_bar.connection);
@@ -211,7 +218,7 @@ int main(void) {
             sam_bar.x_off = 2;
             size = 11;
             dpi = 96;
-            width = 34;
+            width = 32;
         } else if (strcmp("high", current_display) == 0) {
             /* TODO these are educated guesses */
             sam_bar.font_height = 37;
@@ -222,7 +229,7 @@ int main(void) {
             width = 90;
         } else {
             printf("Unknown CURRENT_DISPLAY: %s\n", current_display);
-            exit(1);
+            return EXIT_FAILURE;
         }
 
         sprintf(searchlist, FONT_TEMPLATE, dpi, size);
@@ -242,13 +249,13 @@ int main(void) {
 
     { /* initialize window */
         xcb_void_cookie_t cookie;
-        int mask = XCB_CW_BACK_PIXEL 
-            | XCB_CW_BORDER_PIXEL 
-            | XCB_CW_OVERRIDE_REDIRECT 
+        int mask = XCB_CW_BACK_PIXEL
+            | XCB_CW_BORDER_PIXEL
+            | XCB_CW_OVERRIDE_REDIRECT
             | XCB_CW_COLORMAP;
         /* because we have a 32 bit visual/colormap, just directly use ARGB colors */
         int values[4];
-        values[0] = 0xB80F1117; /* jsyk: 0F1117B1 is pretty, but doesn't match your theme */
+        values[0] = BACKGROUND_COLOR;
         values[1] = 0xFFFFFFFF;
         values[2] = true;
         values[3] = sam_bar.colormap;
@@ -271,7 +278,7 @@ int main(void) {
     { /* initialize graphics context (used for clearing the screen) */
         xcb_void_cookie_t cookie;
         int mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
-        int values[2] = { 0xB80F1117, 0xFFFFFFFF };
+        int values[2] = { BACKGROUND_COLOR, 0xFFFFFFFF };
         cookie = xcb_create_gc_checked(
                 sam_bar.connection,
                 sam_bar.gc,
