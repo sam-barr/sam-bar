@@ -26,7 +26,7 @@
 #define SCREEN_NUMBER 0
 #define ERROR NULL
 #define DATE_BUF_SIZE sizeof("#1Jun#1 05#1Fri#1 07#1 38")
-#define STDIN_LINE_LENGTH 50
+#define STDIN_LINE_LENGTH 55
 #define VOLUME_LENGTH 15
 #define BATTERY_LENGTH 20
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
@@ -123,7 +123,7 @@ enum StrutPartial {
     BOTTOM_END_X
 };
 
-void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, const char *message) {
+void sb_test_cookie(const SamBar *sam_bar, xcb_void_cookie_t cookie, const char *message) {
     xcb_generic_error_t *error = xcb_request_check(sam_bar->connection, cookie);
     if (error != NULL) {
         fprintf(stderr, "%s\n", message);
@@ -135,7 +135,7 @@ void sb_test_cookie(SamBar *sam_bar, xcb_void_cookie_t cookie, const char *messa
  * Assumptions: strlen(message) % SB_NUM_CHARS == 0
  * This doesn't handle unicode in the slightest
  */
-void sb_draw_text(SamBar *sam_bar, int y, char *message) {
+void sb_draw_text(const SamBar *sam_bar, int y, char *message) {
     char buffer[SB_NUM_CHARS + 1] = {0};
     SB_PEN pen;
     int i;
@@ -511,7 +511,7 @@ SB_READ_BATTERY:
                 y -= 3 * sam_bar.font_height + 2 * sam_bar.line_padding;
                 if (battery_string[10] != '\0')
                     y -= sam_bar.font_height + sam_bar.line_padding;
-                sb_draw_text( &sam_bar, y, battery_string);
+                sb_draw_text(&sam_bar, y, battery_string);
                 xcb_flush(sam_bar.connection);
                 redraw = false;
             }
