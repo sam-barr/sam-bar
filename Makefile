@@ -2,17 +2,26 @@ libs=xcb xcb-renderutil xcb-aux fontconfig
 
 INSTALL_DIR=$(HOME)/.local/bin
 
-CFLAGS=-Wall -Werror -Wextra -Wpedantic -Os -s -flto \
+CFLAGS=-Wall -Werror -Wextra -Wpedantic \
 	   $(shell for lib in $(libs); do pkg-config --cflags $$lib; done) \
 	   -D_POSIX_C_SOURCE=200812L -DINSTALL_DIR=\"$(INSTALL_DIR)\" \
 	   -std=c90
 
 CLIBS=$(shell for lib in $(libs); do pkg-config --libs $$lib; done)
 
-all: sam-bar
+OPT=-Os -s -flto
 
-sam-bar: main.c fonts-for-xcb/xcbft/xcbft.c fonts-for-xcb/utf8_utils/utf8.c
-	$(CC) $(CFLAGS) $(CLIBS) $^ -o $@
+DEBUG=-Og -g -DDEBUG
+
+CSOURCE=main.c fonts-for-xcb/xcbft/xcbft.c fonts-for-xcb/utf8_utils/utf8.c
+
+all: sam-bar debug
+
+debug: $(CSOURCE)
+	$(CC) $(CFLAGS) $(CLIBS) $(DEBUG) $^ -o $@
+
+sam-bar: $(CSOURCE)
+	$(CC) $(CFLAGS) $(CLIBS) $(OPT) $^ -o $@
 
 install: sam-bar listen-volume.sh
 	install ./sam-bar $(INSTALL_DIR)/sam-bar
@@ -22,4 +31,4 @@ uninstall:
 	rm $(INSTALL_DIR)/sam-bar $(INSTALL_DIR)/listen-volume.sh
 
 clean:
-	rm sam-bar
+	rm sam-bar debug

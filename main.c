@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 #include <poll.h>
 #include <signal.h>
 #include <time.h>
@@ -186,6 +185,7 @@ int main(void) {
         sam_bar.connection = xcb_connect(NULL, &ptr);
         if (xcb_connection_has_error(sam_bar.connection)) {
             xcb_disconnect(sam_bar.connection);
+            fprintf(stderr, "Unable to connect to X\n");
             return EXIT_FAILURE;
         }
         sam_bar.screen = xcb_setup_roots_iterator(xcb_get_setup(sam_bar.connection)).data;
@@ -232,10 +232,11 @@ int main(void) {
             dpi = 336;
             width = 75;
         } else {
-            printf("Unknown CURRENT_DISPLAY: %s\n", current_display);
+            fprintf(stderr, "Unknown CURRENT_DISPLAY: %s\n", current_display);
             return EXIT_FAILURE;
         }
 
+        xcbft_init();
         sprintf(searchlist, FONT_TEMPLATE, dpi, size);
         fontsearch = xcbft_extract_fontsearch_list(searchlist);
         font_patterns = xcbft_query_fontsearch_all(fontsearch);
@@ -423,12 +424,12 @@ int main(void) {
                 if (*stdin_string == 'X' || *stdin_string == EOF)
                     break;
             } else if (pollfds[SB_POLL_TIMER].revents & POLLIN) {
-                uint64_t num;
+                long num;
                 time_t rawtime;
                 struct tm *info;
                 char prev_minute;
 
-                read(pollfds[SB_POLL_TIMER].fd, &num, sizeof(uint64_t));
+                read(pollfds[SB_POLL_TIMER].fd, &num, sizeof(long));
                 elapsed += num;
 
                 prev_minute = time_string[DATE_BUF_SIZE-2];
