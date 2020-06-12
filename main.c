@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <string.h>
@@ -32,13 +31,15 @@
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
 #define BACKGROUND_COLOR 0xB80F1117
+#define STRUTS_NUM_ARGS 12
 /* jsyk: 0F1117B8 is pretty, but doesn't match your theme */
 
-#define STRUTS_NUM_ARGS 12
+#define true 1
+#define false 0
 
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
 
-#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %—"
+#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
 
 enum {
     SB_POLL_STDIN = 0,
@@ -131,20 +132,17 @@ void sb_test_cookie(const SamBar *sam_bar, xcb_void_cookie_t cookie, const char 
     }
 }
 
-void sb_draw_text(const SamBar *sam_bar, int y, char *message) {
+void sb_draw_text(const SamBar *sam_bar, int y, const char *message) {
     SB_PEN pen;
     FcChar32 text_32[SB_NUM_CHARS];
-    struct utf_holder text;
     int i, message_len, line_height;
     xcb_render_util_composite_text_stream_t *text_stream;
 
-    text.str = text_32;
-    text.length = SB_NUM_CHARS;
     message_len = strlen(message);
     line_height = sam_bar->font_height + sam_bar->line_padding;
 
-    for (; *message != '\0' && *message != '\n'; y += line_height) {
-        if (*message == '#') {
+    for (; message[0] != '\0' && message[0] != '\n'; y += line_height) {
+        if (message[0] == '#') {
             pen = message[1] - '0';
             message += 2;
             message_len -= 2;
@@ -156,20 +154,17 @@ void sb_draw_text(const SamBar *sam_bar, int y, char *message) {
         for(i = 0; i < SB_NUM_CHARS; i++) {
             int shift = FcUtf8ToUcs4(
                     (FcChar8*)message,
-                    text.str + i,
+                    text_32 + i,
                     message_len);
-            if (shift != 1) {
-                printf("%d\n", shift);
-            }
             message_len -= shift;
             message += shift;
         }
 
         text_stream = xcb_render_util_composite_text_stream(
                 sam_bar->glyphset,
-                text.length,
+                SB_NUM_CHARS,
                 0);
-        xcb_render_util_glyphs_32(text_stream, sam_bar->x_off, y, text.length, text.str);
+        xcb_render_util_glyphs_32(text_stream, sam_bar->x_off, y, SB_NUM_CHARS, text_32);
         xcb_render_util_composite_text(
                 sam_bar->connection,
                 XCB_RENDER_PICT_OP_OVER,
@@ -370,7 +365,7 @@ int main(void) {
     { /* main loop setup */
         struct pollfd pollfds[SB_POLL_MAX];
         struct itimerspec ts;
-        bool redraw = false;
+        int redraw = false;
         unsigned long int elapsed = 0; /* hopefully I don't leave this running for > 100 years */
         xcb_rectangle_t rectangle;
         char time_string[DATE_BUF_SIZE] = {0},
