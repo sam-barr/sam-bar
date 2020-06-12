@@ -220,13 +220,12 @@ int main(void) {
             dpi = 96;
             width = 32;
         } else if (strcmp("high", current_display) == 0) {
-            /* TODO these are educated guesses */
-            sam_bar.font_height = 37;
-            sam_bar.line_padding = 26;
+            sam_bar.font_height = 32;
+            sam_bar.line_padding = 24;
             sam_bar.x_off = 5;
-            size = 8;
+            size = 7;
             dpi = 336;
-            width = 90;
+            width = 75;
         } else {
             printf("Unknown CURRENT_DISPLAY: %s\n", current_display);
             return EXIT_FAILURE;
@@ -456,7 +455,7 @@ SB_READ_BATTERY:
                 } else {
                     battery_string[5] = '#';
                     /* decide color for percentage */
-                    switch (capacity[1]) {
+                    switch (capacity[0]) {
                         case  '9':
                         case  '8': battery_string[6] = '2'; break;
                         case  '7':
