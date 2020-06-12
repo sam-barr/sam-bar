@@ -38,7 +38,7 @@
 
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
 
-#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
+#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %—"
 
 enum {
     SB_POLL_STDIN = 0,
@@ -131,29 +131,40 @@ void sb_test_cookie(const SamBar *sam_bar, xcb_void_cookie_t cookie, const char 
     }
 }
 
-/*
- * Assumptions: strlen(message) % SB_NUM_CHARS == 0
- * This doesn't handle unicode in the slightest
- */
 void sb_draw_text(const SamBar *sam_bar, int y, char *message) {
-    char buffer[SB_NUM_CHARS + 1] = {0};
     SB_PEN pen;
-    int i;
+    FcChar32 text_32[SB_NUM_CHARS];
     struct utf_holder text;
+    int i, message_len, line_height;
     xcb_render_util_composite_text_stream_t *text_stream;
 
-    for (; *message != '\0' && *message != '\n';
-            message += SB_NUM_CHARS, y += sam_bar->font_height + sam_bar->line_padding) {
+    text.str = text_32;
+    text.length = SB_NUM_CHARS;
+    message_len = strlen(message);
+    line_height = sam_bar->font_height + sam_bar->line_padding;
+
+    for (; *message != '\0' && *message != '\n'; y += line_height) {
         if (*message == '#') {
             pen = message[1] - '0';
             message += 2;
+            message_len -= 2;
         } else {
             pen = SB_FG;
         }
-        for (i = 0; i < SB_NUM_CHARS; i++)
-            buffer[i] = message[i];
 
-        text = char_to_uint32(buffer);
+        /* load 3 unicode characters */
+        for(i = 0; i < SB_NUM_CHARS; i++) {
+            int shift = FcUtf8ToUcs4(
+                    (FcChar8*)message,
+                    text.str + i,
+                    message_len);
+            if (shift != 1) {
+                printf("%d\n", shift);
+            }
+            message_len -= shift;
+            message += shift;
+        }
+
         text_stream = xcb_render_util_composite_text_stream(
                 sam_bar->glyphset,
                 text.length,
@@ -168,7 +179,6 @@ void sb_draw_text(const SamBar *sam_bar, int y, char *message) {
                 0, 0, /* x, y */
                 text_stream);
         xcb_render_util_composite_text_free(text_stream);
-        utf_holder_destroy(text);
     }
 }
 
