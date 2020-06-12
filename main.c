@@ -500,6 +500,9 @@ SB_READ_BATTERY:
 
             if (redraw) {
                 int y = height;
+#ifdef DEBUG
+                printf("Redrawing\n");
+#endif
                 /* clear the screen */
                 xcb_poly_fill_rectangle(
                         sam_bar.connection,
