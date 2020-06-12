@@ -1,13 +1,13 @@
 libs=xcb xcb-renderutil xcb-aux fontconfig
 
-INSTALL_DIR = $(HOME)/.local/bin
+INSTALL_DIR=$(HOME)/.local/bin
 
-CFLAGS=-Wall -Werror -Wextra -Wpedantic -Os -s \
+CFLAGS=-Wall -Werror -Wextra -Wpedantic -Os -s -flto \
 	   $(shell for lib in $(libs); do pkg-config --cflags $$lib; done) \
 	   -D_POSIX_C_SOURCE=200812L -DINSTALL_DIR=\"$(INSTALL_DIR)\" \
 	   -std=c90
 
-CLIBS = $(shell for lib in $(libs); do pkg-config --libs $$lib; done)
+CLIBS=$(shell for lib in $(libs); do pkg-config --libs $$lib; done)
 
 all: sam-bar
 
