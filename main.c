@@ -108,7 +108,7 @@ typedef struct {
     int font_height, line_padding, x_off;
 } SamBar;
 
-enum StrutPartial {
+enum {
     LEFT = 0,
     RIGHT,
     TOP,
@@ -122,6 +122,68 @@ enum StrutPartial {
     BOTTOM_START_X,
     BOTTOM_END_X
 };
+
+enum {
+    READ_FD = 0,
+    WRITE_FD,
+    SB_PIPE_SIZE
+};
+
+typedef void (*ProcessFunction)();
+
+typedef struct {
+    ProcessFunction run;
+    int write_fd;
+    int read_fd;
+    pid_t id;
+} Process;
+
+void sb_process_init(Process *process, ProcessFunction run) {
+    process->run = run;
+    process->id = -1;
+}
+
+void sb_process_link(Process *p, size_t n) {
+    int process_pipe[SB_PIPE_SIZE];
+    size_t i;
+    for(i = 0; i < n - 1; i++) {
+        if (pipe(process_pipe) == -1) {
+            printf("pipe failed\n");
+            exit(EXIT_FAILURE);
+        }
+        p[i].write_fd = process_pipe[WRITE_FD];
+        p[i+1].read_fd = process_pipe[READ_FD];
+    }
+}
+
+void sb_process_start(Process *p, size_t n) {
+    pid_t id;
+    int i;
+
+    /* for(i = 0; i < n; i++) { */
+    for(i = n - 1; i >= 0; i--) {
+        printf("forking\n");
+        id = fork();
+        if (id < 0) {
+            /* failure */
+            printf("Fork failed\n");
+            exit(EXIT_FAILURE);
+        } else if (id != 0) {
+            /* we are the parent */
+            p[i].id = id;
+        } else if (id == 0) {
+            /* we are the child */
+            dup2(p[i].write_fd, STDOUT_FILENO);
+            dup2(p[i].read_fd, STDIN_FILENO);
+                /* printf("dup2 failed\n"); */
+                /* exit(EXIT_FAILURE); */
+            close(p[i].write_fd);
+            /* close(p[i].read_fd); */
+            p[i].run();
+            exit(EXIT_SUCCESS);
+        }
+    }
+}
 
 void sb_test_cookie(const SamBar *sam_bar, xcb_void_cookie_t cookie, const char *message) {
     xcb_generic_error_t *error = xcb_request_check(sam_bar->connection, cookie);
@@ -176,9 +238,37 @@ void sb_draw_text(const SamBar *sam_bar, int y, const char *message) {
     }
 }
 
+void foo() {
+    execl("/usr/bin/echo", "", "Hello, World!", (char *)NULL);
+}
+
+void bar() {
+    execl("/usr/bin/cat", "", (char *)NULL);
+}
+
+void qux() {
+    execl("/usr/bin/wc", "", "-c", (char *)NULL);
+}
+
 int main(void) {
     SamBar sam_bar;
     int width, height, i;
+
+    {
+        /* test */
+        Process p[4];
+        char buffer[100];
+        sb_process_init(p, qux);
+        sb_process_init(p + 1, bar);
+        sb_process_init(p + 2, bar);
+        sb_process_init(p + 3, bar);
+        sb_process_link(p, 4);
+        sb_process_start(p, 4);
+        read(p[3].read_fd, buffer, 100);
+        printf("RESULT: %s", buffer);
+        printf("\n%ld; %ld\n", strlen(buffer), strlen("Hello, World!\n"));
+        exit(EXIT_SUCCESS);
+    }
 
     { /* initialize most of the xcb stuff sam_bar */
         int ptr = SCREEN_NUMBER;
@@ -379,7 +469,7 @@ int main(void) {
 
         pipe(volume_pipe);
         volume_pid = fork();
-        if (volume_pid == 0) {
+        if (volume_pid == 0) { /* we are the child */
             dup2(volume_pipe[1], STDOUT_FILENO);
             close(volume_pipe[0]);
             close(volume_pipe[1]);
@@ -447,10 +537,10 @@ int main(void) {
                 strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
                 redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
             } else if (pollfds[SB_POLL_VOLUME].revents & POLLIN) {
-#ifdef DEBUG
-                printf("Reading volume\n");
-#endif
                 fgets(volume_string, VOLUME_LENGTH, volume_file);
+#ifdef DEBUG
+                printf("Reading volume: %s", volume_string);
+#endif
                 redraw = true;
             } else if (pollfds[SB_POLL_BATTERY].revents & POLLIN) {
                 /* read the battery when the status changes */
