@@ -15,6 +15,7 @@ DEBUG=-Og -g -DDEBUG
 
 CSOURCE=main.c fonts-for-xcb/xcbft/xcbft.c fonts-for-xcb/utf8_utils/utf8.c
 
+.PHONY: all
 all: sam-bar debug
 
 debug: $(CSOURCE)
@@ -23,12 +24,15 @@ debug: $(CSOURCE)
 sam-bar: $(CSOURCE)
 	$(CC) $(CFLAGS) $(CLIBS) $(OPT) $^ -o $@
 
+.PHONY: install
 install: sam-bar listen-volume.sh
 	install ./sam-bar $(INSTALL_DIR)/sam-bar
 	install ./listen-volume.sh $(INSTALL_DIR)/listen-volume.sh
 
+.PHONY: uninstall
 uninstall:
 	rm $(INSTALL_DIR)/sam-bar $(INSTALL_DIR)/listen-volume.sh
 
+.PHONY: clean
 clean:
 	rm sam-bar debug

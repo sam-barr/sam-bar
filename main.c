@@ -417,12 +417,21 @@ int main(void) {
             poll(pollfds, SB_POLL_MAX, -1);
             if (pollfds[SB_POLL_STDIN].revents & POLLHUP) {
                 /* stdin died, and so do we */
+#ifdef DEBUG
+                printf("stdin closed, exiting\n");
+#endif
                 break;
             } else if (pollfds[SB_POLL_STDIN].revents & POLLIN) {
-                fgets(stdin_string, STDIN_LINE_LENGTH, stdin);
-                redraw = true;
-                if (*stdin_string == 'X' || *stdin_string == EOF)
+                if (fgets(stdin_string, STDIN_LINE_LENGTH, stdin) == NULL) {
+#ifdef DEBUG
+                    printf("EOF; exiting\n");
+#endif
                     break;
+                }
+                redraw = true;
+#ifdef DEBUG
+                printf("Reading stdin: %s", stdin_string);
+#endif
             } else if (pollfds[SB_POLL_TIMER].revents & POLLIN) {
                 long num;
                 time_t rawtime;
@@ -438,6 +447,9 @@ int main(void) {
                 strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
                 redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
             } else if (pollfds[SB_POLL_VOLUME].revents & POLLIN) {
+#ifdef DEBUG
+                printf("Reading volume\n");
+#endif
                 fgets(volume_string, VOLUME_LENGTH, volume_file);
                 redraw = true;
             } else if (pollfds[SB_POLL_BATTERY].revents & POLLIN) {
@@ -452,6 +464,9 @@ int main(void) {
             if (elapsed % 30 == 1) {
                 char status, capacity[4];
 SB_READ_BATTERY:
+#ifdef DEBUG
+                printf("Reading battery\n");
+#endif
 
                 status = fgetc(status_file);
                 fgets(capacity, 4, capacity_file);
