@@ -2,10 +2,9 @@ libs=xcb xcb-renderutil xcb-aux fontconfig
 
 INSTALL_DIR=$(HOME)/.local/bin
 
-CFLAGS=-Wall -Werror -Wextra -Wpedantic \
+CFLAGS=-Wall -Werror -Wextra -Wpedantic -std=c90 \
 	   $(shell for lib in $(libs); do pkg-config --cflags $$lib; done) \
-	   -D_POSIX_C_SOURCE=200812L -DINSTALL_DIR=\"$(INSTALL_DIR)\" \
-	   -std=c90
+	   -D_POSIX_C_SOURCE=200812L
 
 CLIBS=$(shell for lib in $(libs); do pkg-config --libs $$lib; done)
 
@@ -25,9 +24,8 @@ sam-bar: $(CSOURCE)
 	$(CC) $(CFLAGS) $(CLIBS) $(OPT) $^ -o $@
 
 .PHONY: install
-install: sam-bar listen-volume.sh
+install: sam-bar
 	install ./sam-bar $(INSTALL_DIR)/sam-bar
-	install ./listen-volume.sh $(INSTALL_DIR)/listen-volume.sh
 
 .PHONY: uninstall
 uninstall:

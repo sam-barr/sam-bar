@@ -31,6 +31,7 @@
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
 #define BACKGROUND_COLOR 0xB80F1117
 #define STRUTS_NUM_ARGS 12
+#define MAC_ADDRESS "00:1B:66:AC:77:78"
 /* jsyk: 0F1117B8 is pretty, but doesn't match your theme */
 
 #define true 1
@@ -108,7 +109,7 @@ typedef struct {
     int font_height, line_padding, x_off;
 } SamBar;
 
-enum StrutPartial {
+enum {
     LEFT = 0,
     RIGHT,
     TOP,
@@ -122,6 +123,17 @@ enum StrutPartial {
     BOTTOM_START_X,
     BOTTOM_END_X
 };
+
+enum {
+    READ_FD = 0,
+    WRITE_FD,
+    PIPE_SIZE
+};
+
+typedef struct {
+    int pipe[PIPE_SIZE];
+    pid_t pid;
+} ExecInfo;
 
 void sb_test_cookie(const SamBar *sam_bar, xcb_void_cookie_t cookie, const char *message) {
     xcb_generic_error_t *error = xcb_request_check(sam_bar->connection, cookie);
@@ -173,6 +185,26 @@ void sb_draw_text(const SamBar *sam_bar, int y, const char *message) {
                 0, 0, /* x, y */
                 text_stream);
         xcb_render_util_composite_text_free(text_stream);
+    }
+}
+
+void sb_exec(char **args, ExecInfo *info) {
+    if (pipe(info->pipe) == -1) {
+        printf("pipe failed\n");
+        exit(EXIT_FAILURE);
+    }
+
+    info->pid = fork();
+    if (info->pid == -1) {
+        /* fork failed */
+        printf("fork failed\n");
+        exit(EXIT_FAILURE);
+    } else if (info->pid == 0) {
+        /* we are child */
+        dup2(info->pipe[WRITE_FD], STDOUT_FILENO);
+        close(info->pipe[WRITE_FD]);
+        close(info->pipe[READ_FD]);
+        execv(args[0], args);
     }
 }
 
@@ -373,25 +405,21 @@ int main(void) {
              stdin_string[STDIN_LINE_LENGTH] = {0},
              volume_string[VOLUME_LENGTH] = {0},
              battery_string[BATTERY_LENGTH] = {0};
-        int volume_pipe[2];
-        FILE *volume_file, *capacity_file, *status_file;
-        pid_t volume_pid;
+        ExecInfo pactl_info;
+        FILE *pactl_file, *capacity_file, *status_file;
 
-        pipe(volume_pipe);
-        volume_pid = fork();
-        if (volume_pid == 0) {
-            dup2(volume_pipe[1], STDOUT_FILENO);
-            close(volume_pipe[0]);
-            close(volume_pipe[1]);
-            execl(INSTALL_DIR "/listen-volume.sh", "", (char *)NULL);
+        {
+            char *pactl[] = { "/usr/bin/pactl", "subscribe", NULL};
+            sb_exec(pactl, &pactl_info);
+            pactl_file = fdopen(pactl_info.pipe[READ_FD], "r");
+            strcpy(volume_string, "#1vol");
         }
-        volume_file = fdopen(volume_pipe[0], "r");
 
         pollfds[SB_POLL_STDIN].fd = STDIN_FILENO;
         pollfds[SB_POLL_STDIN].events = POLLIN;
         pollfds[SB_POLL_TIMER].fd = timerfd_create(CLOCK_MONOTONIC, 0);
         pollfds[SB_POLL_TIMER].events = POLLIN;
-        pollfds[SB_POLL_VOLUME].fd = volume_pipe[0];
+        pollfds[SB_POLL_VOLUME].fd = pactl_info.pipe[READ_FD];
         pollfds[SB_POLL_VOLUME].events = POLLIN;
         pollfds[SB_POLL_BATTERY].fd = inotify_init1(IN_NONBLOCK);
         pollfds[SB_POLL_BATTERY].events = POLLIN;
@@ -399,7 +427,7 @@ int main(void) {
         capacity_file = fopen(BATTERY_DIRECTORY "/capacity", "r");
         status_file = fopen(BATTERY_DIRECTORY "/status", "r");
         inotify_add_watch(pollfds[SB_POLL_BATTERY].fd, BATTERY_DIRECTORY "/uevent", IN_ACCESS);
-        strcpy(battery_string, "#1Bat");
+        strcpy(battery_string, "#1bat");
 
         ts.it_interval.tv_sec = 1; /* fire every second */
         ts.it_interval.tv_nsec = 0;
@@ -447,11 +475,55 @@ int main(void) {
                 strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
                 redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
             } else if (pollfds[SB_POLL_VOLUME].revents & POLLIN) {
+                char buffer[100];
+                fgets(buffer, 100, pactl_file);
+
+                if (strstr(buffer, "Event 'change' on sink") != NULL) {
+                    /* Event 'change' on on sink, aka volume changed */
+                    char *pamixer[] = { "/usr/bin/pamixer", "--get-volume-human", NULL },
+                         *bluetooth[] = { "/usr/bin/bluetoothctl", "info", MAC_ADDRESS, NULL },
+                         volume_buffer[10];
+                    FILE *bluetooth_file;
+                    ExecInfo pamixer_info, bluetooth_info;
+                    int connected = false;
+
 #ifdef DEBUG
-                printf("Reading volume\n");
+                    printf("Reading volume\n");
 #endif
-                fgets(volume_string, VOLUME_LENGTH, volume_file);
-                redraw = true;
+
+                    sb_exec(pamixer, &pamixer_info);
+                    sb_exec(bluetooth, &bluetooth_info);
+                    read(pamixer_info.pipe[READ_FD], volume_buffer, 10);
+
+                    bluetooth_file = fdopen(bluetooth_info.pipe[READ_FD], "r");
+                    while (fgets(buffer, 100, bluetooth_file) != NULL)
+                        if ((connected = strstr(buffer, "Connected: yes") != NULL))
+                            break;
+                    fclose(bluetooth_file);
+
+                    volume_string[5] = '#';
+                    volume_string[6] = connected ? '3' : '1';
+
+                    if (volume_buffer[0] == 'm') {
+                        /* muted */
+                        strcpy(volume_string + 7, "mut");
+                    } else if (volume_buffer[3] == '%') {
+                        /* max volume */
+                        strcpy(volume_string + 7, "max");
+                    } else if (volume_buffer[1] == '%') {
+                        /* 1 digit volume */
+                        volume_string[7] = ' ';
+                        volume_string[8] = volume_buffer[0];
+                        volume_string[9] = '%';
+                    } else {
+                        /* 2 digit volume */
+                        volume_string[7] = volume_buffer[0];
+                        volume_string[8] = volume_buffer[1];
+                        volume_string[9] = '%';
+                    }
+
+                    redraw = true; 
+                }
             } else if (pollfds[SB_POLL_BATTERY].revents & POLLIN) {
                 /* read the battery when the status changes */
                 struct inotify_event event;
@@ -541,10 +613,10 @@ SB_READ_BATTERY:
         }
 
         /* relinquish loop resources */
-        fclose(volume_file);
+        fclose(pactl_file);
         fclose(status_file);
         fclose(capacity_file);
-        kill(volume_pid, SIGTERM);
+        kill(pactl_info.pid, SIGTERM);
     }
 
     /* relinquish resources */
