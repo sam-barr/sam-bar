@@ -544,7 +544,7 @@ SB_READ_BATTERY:
                 fgets(capacity, 4, capacity_file);
                 if (capacity[2] == '0') {
                     /* battery full */
-                    strcpy(battery_string + 5, "#2Ful");
+                    strcpy(battery_string + 5, "#2ful");
                 } else {
                     battery_string[5] = '#';
                     /* decide color for percentage */
