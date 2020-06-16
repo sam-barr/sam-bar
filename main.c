@@ -409,10 +409,10 @@ int main(void) {
         FILE *pactl_file, *capacity_file, *status_file;
 
         {
-            char *pactl[] = { "/usr/bin/pactl", "subscribe", NULL};
+            char *pactl[] = {"/usr/bin/pactl", "subscribe", NULL };
             sb_exec(pactl, &pactl_info);
             pactl_file = fdopen(pactl_info.pipe[READ_FD], "r");
-            strcpy(volume_string, "#1vol");
+            strcpy(volume_string, "#1vol%%%");
         }
 
         pollfds[SB_POLL_STDIN].fd = STDIN_FILENO;
