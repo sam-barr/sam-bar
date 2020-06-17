@@ -417,7 +417,7 @@ int main(void) {
             char *pactl[] = {"/usr/bin/pactl", "subscribe", NULL };
             sb_exec(pactl, &pactl_info);
             pactl_file = fdopen(pactl_info.pipe[READ_FD], "r");
-            strcpy(volume_string, "#1vol%%%");
+            strcpy(volume_string, "#1Vol%%%");
         }
 
         pollfds[SB_POLL_STDIN].fd = STDIN_FILENO;
@@ -432,7 +432,7 @@ int main(void) {
         capacity_file = fopen(BATTERY_DIRECTORY "/capacity", "r");
         status_file = fopen(BATTERY_DIRECTORY "/status", "r");
         inotify_add_watch(pollfds[SB_POLL_BATTERY].fd, BATTERY_DIRECTORY "/uevent", IN_ACCESS);
-        strcpy(battery_string, "#1bat");
+        strcpy(battery_string, "#1Bat");
 
         ts.it_interval.tv_sec = 1; /* fire every second */
         ts.it_interval.tv_nsec = 0;
@@ -515,10 +515,10 @@ int main(void) {
 
                     if (volume_buffer[0] == 'm') {
                         /* muted */
-                        strcpy(volume_string + 7, "mut");
+                        strcpy(volume_string + 7, "Mut");
                     } else if (volume_buffer[3] == '%') {
                         /* max volume */
-                        strcpy(volume_string + 7, "max");
+                        strcpy(volume_string + 7, "Max");
                     } else if (volume_buffer[1] == '%') {
                         /* 1 digit volume */
                         volume_string[7] = ' ';
@@ -553,7 +553,7 @@ SB_READ_BATTERY:
                 fgets(capacity, 4, capacity_file);
                 if (capacity[2] == '0') {
                     /* battery full */
-                    strcpy(battery_string + 5, "#2ful");
+                    strcpy(battery_string + 5, "#2Ful");
                 } else {
                     battery_string[5] = '#';
                     /* decide color for percentage */
