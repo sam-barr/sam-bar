@@ -8,6 +8,7 @@
 
 #include <sys/timerfd.h>
 #include <sys/inotify.h>
+#include <sys/wait.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
@@ -208,6 +209,10 @@ void sb_exec(char **args, ExecInfo *info) {
     }
 }
 
+void sb_wait(ExecInfo *info) {
+    waitpid(info->pid, NULL, 0);
+}
+
 int main(void) {
     SamBar sam_bar;
     int width, height, i;
@@ -398,7 +403,7 @@ int main(void) {
     { /* main loop setup */
         struct pollfd pollfds[SB_POLL_MAX];
         struct itimerspec ts;
-        int redraw = false;
+        int redraw = false, just_pamixer = false;
         unsigned long int elapsed = 0; /* hopefully I don't leave this running for > 100 years */
         xcb_rectangle_t rectangle;
         char time_string[DATE_BUF_SIZE] = {0},
@@ -475,15 +480,18 @@ int main(void) {
                 strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
                 redraw = prev_minute != time_string[DATE_BUF_SIZE-2];
             } else if (pollfds[SB_POLL_VOLUME].revents & POLLIN) {
-                char buffer[100];
-                fgets(buffer, 100, pactl_file);
+                char buffer[1024];
+                int new_event;
 
-                if (strstr(buffer, "Event 'change' on sink") != NULL) {
-                    /* Event 'change' on on sink, aka volume changed */
+                fgets(buffer, sizeof buffer, pactl_file);
+                new_event = strstr(buffer, "Event 'new'") != NULL;
+
+                if (new_event && just_pamixer) {
+                    just_pamixer = false;
+                } else if (new_event) {
                     char *pamixer[] = { "/usr/bin/pamixer", "--get-volume-human", NULL },
                          *bluetooth[] = { "/usr/bin/bluetoothctl", "info", MAC_ADDRESS, NULL },
                          volume_buffer[10];
-                    FILE *bluetooth_file;
                     ExecInfo pamixer_info, bluetooth_info;
                     int connected = false;
 
@@ -493,13 +501,14 @@ int main(void) {
 
                     sb_exec(pamixer, &pamixer_info);
                     sb_exec(bluetooth, &bluetooth_info);
-                    read(pamixer_info.pipe[READ_FD], volume_buffer, 10);
+                    sb_wait(&pamixer_info);
+                    sb_wait(&bluetooth_info);
+                    just_pamixer = true;
 
-                    bluetooth_file = fdopen(bluetooth_info.pipe[READ_FD], "r");
-                    while (fgets(buffer, 100, bluetooth_file) != NULL)
-                        if ((connected = strstr(buffer, "Connected: yes") != NULL))
-                            break;
-                    fclose(bluetooth_file);
+                    /* assumption: bluetoothctl info | wc -c < 1024 */
+                    read(pamixer_info.pipe[READ_FD], volume_buffer, sizeof volume_buffer);
+                    buffer[read(bluetooth_info.pipe[READ_FD], buffer, sizeof buffer)] = '\0';
+                    connected = strstr(buffer, "Connected: yes") != NULL;
 
                     volume_string[5] = '#';
                     volume_string[6] = connected ? '3' : '1';
