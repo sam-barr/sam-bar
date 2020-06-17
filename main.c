@@ -16,7 +16,7 @@
 
 #include <fontconfig/fontconfig.h>
 #include <ft2build.h>
-#include <freetype/freetype.h>
+#include FT_FREETYPE_H
 
 #include "fonts-for-xcb/utf8_utils/utf8.h"
 #include "fonts-for-xcb/xcbft/xcbft.h"
