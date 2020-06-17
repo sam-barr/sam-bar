@@ -189,7 +189,7 @@ void sb_draw_text(const SamBar *sam_bar, int y, const char *message) {
     }
 }
 
-void sb_exec(char **args, ExecInfo *info) {
+void sb_exec(ExecInfo *info, char **args) {
     if (pipe(info->pipe) == -1) {
         printf("pipe failed\n");
         exit(EXIT_FAILURE);
@@ -415,7 +415,7 @@ int main(void) {
 
         {
             char *pactl[] = {"/usr/bin/pactl", "subscribe", NULL };
-            sb_exec(pactl, &pactl_info);
+            sb_exec(&pactl_info, pactl);
             pactl_file = fdopen(pactl_info.pipe[READ_FD], "r");
             strcpy(volume_string, "#1Vol%%%");
         }
@@ -499,8 +499,8 @@ int main(void) {
                     printf("Reading volume\n");
 #endif
 
-                    sb_exec(pamixer, &pamixer_info);
-                    sb_exec(bluetooth, &bluetooth_info);
+                    sb_exec(&pamixer_info, pamixer);
+                    sb_exec(&bluetooth_info, bluetooth);
                     sb_wait(&pamixer_info);
                     sb_wait(&bluetooth_info);
                     just_pamixer = true;
