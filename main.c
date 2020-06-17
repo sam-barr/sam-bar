@@ -505,11 +505,12 @@ int main(void) {
                     sb_wait(&bluetooth_info);
                     just_pamixer = true;
 
-                    /* assumption: bluetoothctl info | wc -c < 1024 */
+                    /* assumption: $(bluetoothctl info | wc -c) < 1024 */
                     read(pamixer_info.pipe[READ_FD], volume_buffer, sizeof volume_buffer);
                     buffer[read(bluetooth_info.pipe[READ_FD], buffer, sizeof buffer)] = '\0';
                     connected = strstr(buffer, "Connected: yes") != NULL;
 
+                    /* decide color */
                     volume_string[5] = '#';
                     volume_string[6] = connected ? '3' : '1';
 

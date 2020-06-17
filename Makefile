@@ -29,7 +29,7 @@ install: sam-bar
 
 .PHONY: uninstall
 uninstall:
-	rm $(INSTALL_DIR)/sam-bar $(INSTALL_DIR)/listen-volume.sh
+	rm $(INSTALL_DIR)/sam-bar
 
 .PHONY: clean
 clean:
