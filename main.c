@@ -5,6 +5,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <errno.h>
+
+extern int errno;
 
 #include <sys/inotify.h>
 #include <sys/timerfd.h>
@@ -215,6 +218,18 @@ void sb_exec(ExecInfo *info, char **args) {
 
 void sb_wait(ExecInfo *info) {
     waitpid(info->pid, NULL, 0);
+    close(info->pipe[WRITE_FD]);
+}
+
+void sb_kill(ExecInfo *info) {
+    kill(info->pid, SIGTERM);
+    close(info->pipe[WRITE_FD]);
+    close(info->pipe[READ_FD]);
+}
+
+void sb_read(ExecInfo *info, char *buffer, size_t num_bytes) {
+    buffer[read(info->pipe[READ_FD], buffer, num_bytes)] = '\0';
+    close(info->pipe[READ_FD]);
 }
 
 void sb_loop_read_volume(char *volume_string)
@@ -231,8 +246,8 @@ void sb_loop_read_volume(char *volume_string)
     sb_wait(&bluetooth_info);
 
     /* assumption: $(bluetoothctl info | wc -c) < 1024 */
-    read(pamixer_info.pipe[READ_FD], volume_buffer, sizeof volume_buffer);
-    buffer[read(bluetooth_info.pipe[READ_FD], buffer, sizeof buffer)] = '\0';
+    sb_read(&pamixer_info, volume_buffer, sizeof volume_buffer);
+    sb_read(&bluetooth_info, buffer, sizeof buffer);
     connected = strstr(buffer, "Connected: yes") != NULL;
 
     /* decide color */
@@ -265,6 +280,9 @@ void sb_loop_read_battery(char *battery_string)
 
     capacity_file = fopen(BATTERY_DIRECTORY "/capacity", "r");
     status_file = fopen(BATTERY_DIRECTORY "/status", "r");
+    if (status_file == NULL) {
+        printf("%s\n", strerror(errno));
+    }
     status = fgetc(status_file);
     fgets(capacity, 4, capacity_file);
 
@@ -361,10 +379,8 @@ void sb_loop_main(SamBar *sam_bar)
             /* stdin died, and so do we */
             break;
         } else if (pollfds[SB_POLL_STDIN].revents & POLLIN) {
-            if (fgets(stdin_string, STDIN_LINE_LENGTH, stdin) ==
-                    NULL) {
+            if (fgets(stdin_string, STDIN_LINE_LENGTH, stdin) == NULL)
                 break;
-            }
             redraw = true;
         } else if (pollfds[SB_POLL_TIMER].revents & POLLIN) {
             long num;
@@ -401,9 +417,10 @@ void sb_loop_main(SamBar *sam_bar)
             redraw = true;
         }
 
-        /* read the battery every 30 seconds */
-        if (elapsed % 30 == 0) {
+        /* read battery and volume every 30 seconds */
+        if (elapsed % 1 == 0) {
             sb_loop_read_battery(battery_string);
+            sb_loop_read_volume(volume_string);
             redraw = true;
         }
 
@@ -433,7 +450,7 @@ void sb_loop_main(SamBar *sam_bar)
 
     /* relinquish loop resources */
     fclose(pactl_file);
-    kill(pactl_info.pid, SIGTERM);
+    sb_kill(&pactl_info);
 }
 
 int main(void)
