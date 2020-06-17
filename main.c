@@ -418,7 +418,7 @@ void sb_loop_main(SamBar *sam_bar)
         }
 
         /* read battery and volume every 30 seconds */
-        if (elapsed % 1 == 0) {
+        if (elapsed % 30 == 0) {
             sb_loop_read_battery(battery_string);
             sb_loop_read_volume(volume_string);
             redraw = true;
