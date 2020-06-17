@@ -490,8 +490,7 @@ int main(void)
             size = 7;
             dpi = 336;
         } else {
-            fprintf(stderr, "Unknown CURRENT_DISPLAY: %s\n",
-                    current_display);
+            fprintf(stderr, "Unknown CURRENT_DISPLAY: %s\n", current_display);
             return EXIT_FAILURE;
         }
 
@@ -513,10 +512,11 @@ int main(void)
 
     { /* initialize window */
         xcb_void_cookie_t cookie;
-        int mask = XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL |
-            XCB_CW_OVERRIDE_REDIRECT | XCB_CW_COLORMAP;
-        /* because we have a 32 bit visual/colormap, just directly use
-         * ARGB colors */
+        int mask = XCB_CW_BACK_PIXEL
+            | XCB_CW_BORDER_PIXEL
+            | XCB_CW_OVERRIDE_REDIRECT
+            | XCB_CW_COLORMAP;
+        /* because we have a 32 bit visual/colormap, just directly use ARGB colors */
         int values[4];
         values[0] = BACKGROUND_COLOR;
         values[1] = 0xFFFFFFFF;
@@ -524,23 +524,23 @@ int main(void)
         values[3] = sam_bar.colormap;
 
         cookie = xcb_create_window_checked(
-                sam_bar.connection,
-                32, /* 32 bits of depth */
-                sam_bar.window, sam_bar.screen->root,
-                0, 0, /* top corner of screen */
-                sam_bar.width, sam_bar.height,
-                0, /* border width */
-                XCB_WINDOW_CLASS_INPUT_OUTPUT,
-                sam_bar.visual_id,
-                mask,
-                values);
+            sam_bar.connection,
+            32, /* 32 bits of depth */
+            sam_bar.window, sam_bar.screen->root,
+            0, 0, /* top corner of screen */
+            sam_bar.width, sam_bar.height,
+            0, /* border width */
+            XCB_WINDOW_CLASS_INPUT_OUTPUT,
+            sam_bar.visual_id,
+            mask,
+            values);
         sb_test_cookie(&sam_bar, cookie, "xcb_create_window_checked failed");
     }
 
     { /* initialize graphics context (used for clearing the screen) */
         xcb_void_cookie_t cookie;
         int mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
-        int values[2] = {BACKGROUND_COLOR, 0xFFFFFFFF};
+        int values[2] = { BACKGROUND_COLOR, 0xFFFFFFFF };
         cookie = xcb_create_gc_checked(
             sam_bar.connection,
             sam_bar.gc,
@@ -556,7 +556,7 @@ int main(void)
         xcb_render_pictforminfo_t *fmt =
             xcb_render_util_find_standard_format(fmt_rep, XCB_PICT_STANDARD_ARGB_32);
         int mask = XCB_RENDER_CP_POLY_MODE | XCB_RENDER_CP_POLY_EDGE;
-        int values[2] = {XCB_RENDER_POLY_MODE_IMPRECISE, XCB_RENDER_POLY_EDGE_SMOOTH};
+        int values[2] = { XCB_RENDER_POLY_MODE_IMPRECISE, XCB_RENDER_POLY_EDGE_SMOOTH };
         xcb_void_cookie_t cookie = xcb_render_create_picture_checked(
             sam_bar.connection,
             sam_bar.picture,
