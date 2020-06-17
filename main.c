@@ -165,26 +165,26 @@ void sb_draw_text(const SamBar *sam_bar, int y, const char *message) {
         /* load 3 unicode characters */
         for(i = 0; i < SB_NUM_CHARS; i++) {
             int shift = FcUtf8ToUcs4(
-                    (FcChar8*)message,
-                    text_32 + i,
-                    message_len);
+                (FcChar8*)message,
+                text_32 + i,
+                message_len);
             message_len -= shift;
             message += shift;
         }
 
         text_stream = xcb_render_util_composite_text_stream(
-                sam_bar->glyphset,
-                SB_NUM_CHARS,
-                0);
+            sam_bar->glyphset,
+            SB_NUM_CHARS,
+            0);
         xcb_render_util_glyphs_32(text_stream, sam_bar->x_off, y, SB_NUM_CHARS, text_32);
         xcb_render_util_composite_text(
-                sam_bar->connection,
-                XCB_RENDER_PICT_OP_OVER,
-                sam_bar->pens[pen],
-                sam_bar->picture,
-                0,
-                0, 0, /* x, y */
-                text_stream);
+            sam_bar->connection,
+            XCB_RENDER_PICT_OP_OVER,
+            sam_bar->pens[pen],
+            sam_bar->picture,
+            0,
+            0, 0, /* x, y */
+            text_stream);
         xcb_render_util_composite_text_free(text_stream);
     }
 }
@@ -239,11 +239,11 @@ int main(void) {
 
     /* initialize a 32 bit colormap */
     xcb_create_colormap(
-            sam_bar.connection,
-            XCB_COLORMAP_ALLOC_NONE,
-            sam_bar.colormap,
-            sam_bar.screen->root,
-            sam_bar.visual_id);
+        sam_bar.connection,
+        XCB_COLORMAP_ALLOC_NONE,
+        sam_bar.colormap,
+        sam_bar.screen->root,
+        sam_bar.visual_id);
 
     { /* load up fonts and glyphs */
         char searchlist[100] = {0},
@@ -282,10 +282,10 @@ int main(void) {
         xcbft_patterns_holder_destroy(font_patterns);
         chars = char_to_uint32(CHARS);
         sam_bar.glyphset = xcbft_load_glyphset(
-                sam_bar.connection,
-                sam_bar.face_holder,
-                chars,
-                dpi).glyphset;
+            sam_bar.connection,
+            sam_bar.face_holder,
+            chars,
+            dpi).glyphset;
         utf_holder_destroy(chars);
     }
 
@@ -303,17 +303,17 @@ int main(void) {
         values[3] = sam_bar.colormap;
 
         cookie = xcb_create_window_checked(
-                sam_bar.connection,
-                32, /* 32 bits of depth */
-                sam_bar.window,
-                sam_bar.screen->root,
-                0, 0, /* top corner of screen */
-                width, height,
-                0, /* border width */
-                XCB_WINDOW_CLASS_INPUT_OUTPUT,
-                sam_bar.visual_id,
-                mask,
-                values);
+            sam_bar.connection,
+            32, /* 32 bits of depth */
+            sam_bar.window,
+            sam_bar.screen->root,
+            0, 0, /* top corner of screen */
+            width, height,
+            0, /* border width */
+            XCB_WINDOW_CLASS_INPUT_OUTPUT,
+            sam_bar.visual_id,
+            mask,
+            values);
         sb_test_cookie(&sam_bar, cookie, "xcb_create_window_checked failed");
     }
 
@@ -322,11 +322,11 @@ int main(void) {
         int mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
         int values[2] = { BACKGROUND_COLOR, 0xFFFFFFFF };
         cookie = xcb_create_gc_checked(
-                sam_bar.connection,
-                sam_bar.gc,
-                sam_bar.window,
-                mask,
-                values);
+            sam_bar.connection,
+            sam_bar.gc,
+            sam_bar.window,
+            mask,
+            values);
         sb_test_cookie(&sam_bar, cookie, "xcb_create_gc_checked failed");
     }
 
@@ -334,17 +334,17 @@ int main(void) {
         const xcb_render_query_pict_formats_reply_t *fmt_rep =
             xcb_render_util_query_formats(sam_bar.connection);
         xcb_render_pictforminfo_t *fmt = xcb_render_util_find_standard_format(
-                fmt_rep,
-                XCB_PICT_STANDARD_ARGB_32);
+            fmt_rep,
+            XCB_PICT_STANDARD_ARGB_32);
         int mask = XCB_RENDER_CP_POLY_MODE | XCB_RENDER_CP_POLY_EDGE;
         int values[2] = { XCB_RENDER_POLY_MODE_IMPRECISE, XCB_RENDER_POLY_EDGE_SMOOTH };
         xcb_void_cookie_t cookie = xcb_render_create_picture_checked(
-                sam_bar.connection,
-                sam_bar.picture,
-                sam_bar.window,
-                fmt->id,
-                mask,
-                values);
+            sam_bar.connection,
+            sam_bar.picture,
+            sam_bar.window,
+            fmt->id,
+            mask,
+            values);
         sb_test_cookie(&sam_bar, cookie, "xcb_create_picture_checked failed");
     }
 
@@ -352,16 +352,16 @@ int main(void) {
         xcb_intern_atom_cookie_t atom_cookies[SB_ATOM_MAX];
         for (i = 0; i < SB_ATOM_MAX; i++) {
             atom_cookies[i] = xcb_intern_atom(
-                    sam_bar.connection,
-                    0, /* "atom will be created if it does not already exist" */
-                    SB_ATOM_STRING[i].len,
-                    SB_ATOM_STRING[i].name);
+                sam_bar.connection,
+                0, /* "atom will be created if it does not already exist" */
+                SB_ATOM_STRING[i].len,
+                SB_ATOM_STRING[i].name);
         }
         for (i = 0; i < SB_ATOM_MAX; i++) {
             xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(
-                    sam_bar.connection,
-                    atom_cookies[i],
-                    ERROR);
+                sam_bar.connection,
+                atom_cookies[i],
+                ERROR);
             sam_bar.atoms[i] = reply->atom;
             free(reply);
         }
@@ -369,14 +369,14 @@ int main(void) {
 
     /* change window properties to be a dock */
     xcb_change_property(
-            sam_bar.connection,
-            XCB_PROP_MODE_REPLACE,
-            sam_bar.window,
-            sam_bar.atoms[NET_WM_WINDOW_TYPE],
-            XCB_ATOM_ATOM,
-            32, /* MAGIC NUMBER?? */
-            1, /* sending 1 argument */
-            &sam_bar.atoms[NET_WM_WINDOW_TYPE_DOCK]);
+        sam_bar.connection,
+        XCB_PROP_MODE_REPLACE,
+        sam_bar.window,
+        sam_bar.atoms[NET_WM_WINDOW_TYPE],
+        XCB_ATOM_ATOM,
+        32, /* MAGIC NUMBER?? */
+        1, /* sending 1 argument */
+        &sam_bar.atoms[NET_WM_WINDOW_TYPE_DOCK]);
 
     {
         /* setup struts so windows don't overlap the bar */
@@ -387,14 +387,14 @@ int main(void) {
         struts[TOP_START_X] = struts[BOTTOM_START_X] = 0;
         struts[TOP_END_X] = struts[BOTTOM_END_X] = width;
         xcb_change_property(
-                sam_bar.connection,
-                XCB_PROP_MODE_REPLACE,
-                sam_bar.window,
-                sam_bar.atoms[NET_WM_STRUT_PARTIAL],
-                XCB_ATOM_CARDINAL,
-                32, /* MAGIC NUMBER ? */
-                STRUTS_NUM_ARGS,
-                struts);
+            sam_bar.connection,
+            XCB_PROP_MODE_REPLACE,
+            sam_bar.window,
+            sam_bar.atoms[NET_WM_STRUT_PARTIAL],
+            XCB_ATOM_CARDINAL,
+            32, /* MAGIC NUMBER ? */
+            STRUTS_NUM_ARGS,
+            struts);
     }
 
     xcb_map_window(sam_bar.connection, sam_bar.window);
@@ -602,11 +602,11 @@ SB_READ_BATTERY:
 #endif
                 /* clear the screen */
                 xcb_poly_fill_rectangle(
-                        sam_bar.connection,
-                        sam_bar.window,
-                        sam_bar.gc,
-                        1, /* 1 rectangle */
-                        &rectangle);
+                    sam_bar.connection,
+                    sam_bar.window,
+                    sam_bar.gc,
+                    1, /* 1 rectangle */
+                    &rectangle);
                 /* write the text */
                 sb_draw_text(&sam_bar, sam_bar.font_height, stdin_string);
                 y -= 4 * sam_bar.font_height + 5 * sam_bar.line_padding;
