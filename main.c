@@ -29,6 +29,8 @@
 #define VOLUME_LENGTH 15
 #define BATTERY_LENGTH 20
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
+#define LIGHT_LENGTH 15
+#define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
 #define BACKGROUND_COLOR 0xB80F1117
 #define STRUTS_NUM_ARGS 12
@@ -47,6 +49,7 @@ enum {
     SB_POLL_TIMER,
     SB_POLL_VOLUME,
     SB_POLL_BATTERY,
+    SB_POLL_LIGHT,
     SB_POLL_MAX
 };
 
@@ -321,17 +324,60 @@ void sb_loop_read_battery(char *battery_string)
     fclose(capacity_file);
 }
 
+int sb_is_numeric(char c) { return c >= '0' && c <= '9'; }
+
+/* this makes, light, 1,000,000 assumptions and is not safe */
+int sb_str_to_int(char *str) {
+    int n = 0;
+    char c;
+    while (sb_is_numeric(c = *(str++)))
+        n = n * 10 + c - '0';
+    return n;
+}
+
+void sb_loop_read_light(char *light_string) {
+    FILE *brightness_file, *max_file;
+    int brightness, max, light;
+    char buffer[100];
+
+    brightness_file = fopen(LIGHT_DIRECTORY "/brightness", "r");
+    max_file = fopen(LIGHT_DIRECTORY "/max_brightness", "r");
+
+    fgets(buffer, sizeof buffer, brightness_file);
+    brightness = sb_str_to_int(buffer);
+    fgets(buffer, sizeof buffer, max_file);
+    max = sb_str_to_int(buffer);
+    light = (int) (brightness / ((double) max) * 100);
+
+    strcpy(light_string + 5, "#1");
+    if (light == 100) {
+        strcpy(light_string + 7, "Max");
+    } else if (light < 10) {
+        light_string[7] = ' ';
+        light_string[8] = light + '0';
+        light_string[9] = '%';
+    } else {
+        light_string[7] = light / 10 + '0';
+        light_string[8] = light % 10 + '0';
+        light_string[9] = '%';
+    }
+
+    fclose(brightness_file);
+    fclose(max_file);
+}
+
 void sb_loop_main(SamBar *sam_bar)
 {
     struct pollfd pollfds[SB_POLL_MAX];
     struct itimerspec ts;
-    int redraw = false, just_pamixer = false;
+    int redraw = false, just_pamixer = false, i;
     unsigned long int elapsed = 0; /* hopefully I don't leave this running for > 100 years */
     xcb_rectangle_t rectangle;
     char time_string[DATE_BUF_SIZE] = {0},
          stdin_string[STDIN_LINE_LENGTH] = {0},
          volume_string[VOLUME_LENGTH] = {0},
-         battery_string[BATTERY_LENGTH] = {0};
+         battery_string[BATTERY_LENGTH] = {0},
+         light_string[LIGHT_LENGTH] = {0};
     ExecInfo pactl_info;
     FILE *pactl_file;
 
@@ -343,16 +389,18 @@ void sb_loop_main(SamBar *sam_bar)
     }
 
     pollfds[SB_POLL_STDIN].fd = STDIN_FILENO;
-    pollfds[SB_POLL_STDIN].events = POLLIN;
     pollfds[SB_POLL_TIMER].fd = timerfd_create(CLOCK_MONOTONIC, 0);
-    pollfds[SB_POLL_TIMER].events = POLLIN;
     pollfds[SB_POLL_VOLUME].fd = pactl_info.pipe[READ_FD];
-    pollfds[SB_POLL_VOLUME].events = POLLIN;
     pollfds[SB_POLL_BATTERY].fd = inotify_init1(IN_NONBLOCK);
-    pollfds[SB_POLL_BATTERY].events = POLLIN;
+    pollfds[SB_POLL_LIGHT].fd = inotify_init1(IN_NONBLOCK);
+    for(i = 0; i < SB_POLL_MAX; i++)
+        pollfds[i].events = POLLIN;
 
     inotify_add_watch(pollfds[SB_POLL_BATTERY].fd, BATTERY_DIRECTORY "/uevent", IN_ACCESS);
     strcpy(battery_string, "#1Bat");
+
+    inotify_add_watch(pollfds[SB_POLL_LIGHT].fd, LIGHT_DIRECTORY "/brightness", IN_MODIFY);
+    strcpy(light_string, "#1Lit");
 
     ts.it_interval.tv_sec = 1; /* fire every second */
     ts.it_interval.tv_nsec = 0;
@@ -367,6 +415,7 @@ void sb_loop_main(SamBar *sam_bar)
     /* main loop */
     sb_loop_read_volume(volume_string);
     sb_loop_read_battery(battery_string);
+    sb_loop_read_light(light_string);
     for (;;) {
         /* blocks until one of the fds becomes open */
         poll(pollfds, SB_POLL_MAX, -1);
@@ -410,12 +459,16 @@ void sb_loop_main(SamBar *sam_bar)
             read(pollfds[SB_POLL_BATTERY].fd, &event, sizeof event);
             sb_loop_read_battery(battery_string);
             redraw = true;
+        } else if (pollfds[SB_POLL_LIGHT].revents & POLLIN) {
+            struct inotify_event event;
+            read(pollfds[SB_POLL_LIGHT].fd, &event, sizeof event);
+            sb_loop_read_light(light_string);
+            redraw = true;
         }
 
-        /* read battery and volume every 30 seconds */
+        /* read battery every 30 seconds */
         if (elapsed % 30 == 0) {
             sb_loop_read_battery(battery_string);
-            sb_loop_read_volume(volume_string);
             redraw = true;
         }
 
@@ -438,6 +491,8 @@ void sb_loop_main(SamBar *sam_bar)
             if (battery_string[10] != '\0')
                 y -= sam_bar->font_height + sam_bar->line_padding;
             sb_draw_text(sam_bar, y, battery_string);
+            y -= 3 * sam_bar->font_height + 2 * sam_bar->line_padding;
+            sb_draw_text(sam_bar, y, light_string);
             xcb_flush(sam_bar->connection);
             redraw = false;
         }
