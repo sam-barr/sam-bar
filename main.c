@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <sys/inotify.h>
 #include <sys/timerfd.h>
@@ -378,12 +379,13 @@ void sb_loop_main(SamBar *sam_bar) {
          battery_string[BATTERY_LENGTH] = {0},
          light_string[LIGHT_LENGTH] = {0};
     ExecInfo pactl_info;
-    FILE *pactl_file;
 
     {
         char *pactl[] = {"/usr/bin/pactl", "subscribe", NULL};
+        int flags;
         sb_exec(&pactl_info, pactl);
-        pactl_file = fdopen(pactl_info.pipe[READ_FD], "r");
+        flags = fcntl(pactl_info.pipe[READ_FD], F_GETFL, 0);
+        fcntl(pactl_info.pipe[READ_FD], F_SETFL, flags | O_NONBLOCK);
         strcpy(volume_string, "#1Vol%%%");
     }
 
@@ -440,14 +442,12 @@ void sb_loop_main(SamBar *sam_bar) {
             strftime(time_string, DATE_BUF_SIZE, "#1%b#1 %d#1%a#1 %I#1 %M", info);
             redraw = prev_minute != time_string[DATE_BUF_SIZE - 2];
         } else if (pollfds[SB_POLL_VOLUME].revents & POLLIN) {
-            char buffer[150];
-            int new_event;
+            char buffer[1024];
 
-            fgets(buffer, sizeof buffer, pactl_file);
-            new_event = strstr(buffer, "Event 'new'") != NULL;
-            if (new_event && just_pamixer) {
+            while (read(pactl_info.pipe[READ_FD], buffer, sizeof buffer) > 0);
+            if (just_pamixer) {
                 just_pamixer = false;
-            } else if (new_event) {
+            } else {
                 sb_loop_read_volume(volume_string);
                 just_pamixer = true;
                 redraw = true;
@@ -498,7 +498,6 @@ void sb_loop_main(SamBar *sam_bar) {
     }
 
     /* relinquish loop resources */
-    fclose(pactl_file);
     sb_kill(&pactl_info);
 }
 
