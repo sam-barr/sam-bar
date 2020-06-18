@@ -347,7 +347,7 @@ void sb_loop_read_light(char *light_string) {
     brightness = sb_str_to_int(buffer);
     fgets(buffer, sizeof buffer, max_file);
     max = sb_str_to_int(buffer);
-    light = (int) (brightness / ((double) max) * 100);
+    light = 100 * brightness / max;
 
     strcpy(light_string + 5, "#1");
     if (light == 100) {
@@ -366,8 +366,7 @@ void sb_loop_read_light(char *light_string) {
     fclose(max_file);
 }
 
-void sb_loop_main(SamBar *sam_bar)
-{
+void sb_loop_main(SamBar *sam_bar) {
     struct pollfd pollfds[SB_POLL_MAX];
     struct itimerspec ts;
     int redraw = false, just_pamixer = false, i;
