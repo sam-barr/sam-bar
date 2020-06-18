@@ -5,9 +5,6 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <errno.h>
-
-extern int errno;
 
 #include <sys/inotify.h>
 #include <sys/timerfd.h>
@@ -280,9 +277,7 @@ void sb_loop_read_battery(char *battery_string)
 
     capacity_file = fopen(BATTERY_DIRECTORY "/capacity", "r");
     status_file = fopen(BATTERY_DIRECTORY "/status", "r");
-    if (status_file == NULL) {
-        printf("%s\n", strerror(errno));
-    }
+
     status = fgetc(status_file);
     fgets(capacity, 4, capacity_file);
 
