@@ -148,6 +148,11 @@ void sb_test_cookie(const SamBar *sam_bar, xcb_void_cookie_t cookie, const char 
     }
 }
 
+/*
+ * Draw a bit of text on the status bar.
+ * Assumptions:
+ * - message matches ((#[0-9])?ccc)*, where c is one of the characters in CHARS
+ */
 void sb_draw_text(const SamBar *sam_bar, int y, const char *message) {
     SB_PEN pen;
     FcChar32 text_32[SB_NUM_CHARS];
@@ -197,6 +202,11 @@ void sb_draw_text(const SamBar *sam_bar, int y, const char *message) {
     }
 }
 
+/*
+ * Forks and calls execv on args; setting up the pipe
+ * Assumptions:
+ * - the last element of args = NULL
+ */
 void sb_exec(ExecInfo *info, char **args) {
     if (pipe(info->pipe) == -1) {
         printf("pipe failed\n");
@@ -217,17 +227,34 @@ void sb_exec(ExecInfo *info, char **args) {
     }
 }
 
+/*
+ * Waits for the associated process of info to terminate;
+ * then closes the write end of the pipe
+ * Assumptions:
+ * - info->pid actually refers to an open process
+ */
 void sb_wait(ExecInfo *info) {
     waitpid(info->pid, NULL, 0);
     close(info->pipe[WRITE_FD]);
 }
 
+/*
+ * Kills the associated process of info and closes both ends of the pipe
+ * Assumptions:
+ * - info->pid actually refers to an open process
+ */
 void sb_kill(ExecInfo *info) {
     kill(info->pid, SIGTERM);
     close(info->pipe[WRITE_FD]);
     close(info->pipe[READ_FD]);
 }
 
+/*
+ * Read num_bytes from the pipe into the buffer, appends a null byte,
+ * and closes the read end of the pipe
+ * Assumptions:
+ * - buffer is big enough
+ */
 void sb_read(ExecInfo *info, char *buffer, size_t num_bytes) {
     buffer[read(info->pipe[READ_FD], buffer, num_bytes)] = '\0';
     close(info->pipe[READ_FD]);
@@ -327,7 +354,6 @@ void sb_loop_read_battery(char *battery_string)
 
 int sb_is_numeric(char c) { return c >= '0' && c <= '9'; }
 
-/* this makes, light, 1,000,000 assumptions and is not safe */
 int sb_str_to_int(char *str) {
     int n = 0;
     char c;
