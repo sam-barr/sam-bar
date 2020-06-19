@@ -33,6 +33,7 @@
 #define LIGHT_LENGTH 15
 #define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
+#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
 #define BACKGROUND_COLOR 0xB80F1117
 #define STRUTS_NUM_ARGS 12
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
@@ -42,8 +43,8 @@
 #define false 0
 
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
-
-#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
+#define sb_pen_to_char(p) ((p) + '0')
+#define sb_char_to_pen(c) ((c) - '0')
 
 enum {
     SB_POLL_STDIN = 0,
@@ -163,7 +164,7 @@ void sb_draw_text(const SamBar *sam_bar, int y, const char *message) {
 
     for (; message[0] != '\0' && message[0] != '\n'; y += line_height) {
         if (message[0] == '#') {
-            pen = message[1] - '0';
+            pen = sb_char_to_pen(message[1]);
             message += 2;
             message_len -= 2;
         } else {
@@ -278,7 +279,7 @@ void sb_loop_read_volume(char *volume_string) {
 
     /* decide color */
     volume_string[5] = '#';
-    volume_string[6] = '0' + (connected ? SB_CYAN_B : SB_BLACK_B);
+    volume_string[6] = sb_pen_to_char(connected ? SB_CYAN_B : SB_BLACK_B);
 
     if (volume_buffer[0] == 'm') {
         /* muted */
@@ -317,15 +318,15 @@ void sb_loop_read_battery(char *battery_string) {
         /* decide color for percentage */
         switch (capacity[0]) {
             case  '9':
-            case  '8': battery_string[6] = SB_GREEN_N + '0'; break;
+            case  '8': battery_string[6] = sb_pen_to_char(SB_GREEN_N);break;
             case  '7':
             case  '6':
             case  '5':
             case  '4':
-            case  '3': battery_string[6] = SB_YELLOW_N + '0'; break;
+            case  '3': battery_string[6] = sb_pen_to_char(SB_YELLOW_N); break;
             case  '2':
             case  '1':
-            case '\n': battery_string[6] = SB_RED_N + '0'; break;
+            case '\n': battery_string[6] = sb_pen_to_char(SB_RED_N); break;
         }
 
         /* append the capacity */
@@ -352,8 +353,7 @@ void sb_loop_read_battery(char *battery_string) {
 int sb_is_numeric(char c) { return c >= '0' && c <= '9'; }
 
 int sb_str_to_int(char *str) {
-    int n = 0;
-    char c;
+    int c, n = 0;
     while (sb_is_numeric(c = *(str++)))
         n = n * 10 + c - '0';
     return n;
@@ -409,7 +409,7 @@ void sb_loop_main(SamBar *sam_bar) {
         sb_exec(&pactl_info, pactl);
         flags = fcntl(pactl_info.pipe[READ_FD], F_GETFL, 0);
         fcntl(pactl_info.pipe[READ_FD], F_SETFL, flags | O_NONBLOCK);
-        strcpy(volume_string, "#1Vol%%%");
+        strcpy(volume_string, "#1Vol");
     }
 
     pollfds[SB_POLL_STDIN].fd = STDIN_FILENO;
