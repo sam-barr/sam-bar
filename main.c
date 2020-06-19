@@ -259,8 +259,7 @@ void sb_read(ExecInfo *info, char *buffer, size_t num_bytes) {
     close(info->pipe[READ_FD]);
 }
 
-void sb_loop_read_volume(char *volume_string)
-{
+void sb_loop_read_volume(char *volume_string) {
     char *pamixer[] = {"/usr/bin/pamixer", "--get-volume-human", NULL},
          *bluetooth[] = {"/usr/bin/bluetoothctl", "info", MAC_ADDRESS, NULL},
          buffer[1024], volume_buffer[10];
@@ -279,7 +278,7 @@ void sb_loop_read_volume(char *volume_string)
 
     /* decide color */
     volume_string[5] = '#';
-    volume_string[6] = '0' + connected ? SB_CYAN_B : SB_BLACK_B;
+    volume_string[6] = '0' + (connected ? SB_CYAN_B : SB_BLACK_B);
 
     if (volume_buffer[0] == 'm') {
         /* muted */
@@ -300,8 +299,7 @@ void sb_loop_read_volume(char *volume_string)
     }
 }
 
-void sb_loop_read_battery(char *battery_string)
-{
+void sb_loop_read_battery(char *battery_string) {
     char status, capacity[4];
     FILE *status_file, *capacity_file;
 
@@ -526,8 +524,7 @@ void sb_loop_main(SamBar *sam_bar) {
     sb_kill(&pactl_info);
 }
 
-int main(void)
-{
+int main(void) {
     SamBar sam_bar;
     int i;
 
