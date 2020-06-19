@@ -141,8 +141,7 @@ typedef struct {
 } ExecInfo;
 
 void sb_test_cookie(const SamBar *sam_bar, xcb_void_cookie_t cookie, const char *message) {
-    xcb_generic_error_t *error = xcb_request_check(sam_bar->connection, cookie);
-    if (error != NULL) {
+    if (xcb_request_check(sam_bar->connection, cookie) != NULL) {
         fprintf(stderr, "%s\n", message);
         exit(EXIT_FAILURE);
     }
@@ -280,7 +279,7 @@ void sb_loop_read_volume(char *volume_string)
 
     /* decide color */
     volume_string[5] = '#';
-    volume_string[6] = connected ? '3' : '1';
+    volume_string[6] = '0' + connected ? SB_CYAN_B : SB_BLACK_B;
 
     if (volume_buffer[0] == 'm') {
         /* muted */
@@ -320,15 +319,15 @@ void sb_loop_read_battery(char *battery_string)
         /* decide color for percentage */
         switch (capacity[0]) {
             case  '9':
-            case  '8': battery_string[6] = '2'; break;
+            case  '8': battery_string[6] = SB_GREEN_N + '0'; break;
             case  '7':
             case  '6':
             case  '5':
             case  '4':
-            case  '3': battery_string[6] = '5'; break;
+            case  '3': battery_string[6] = SB_YELLOW_N + '0'; break;
             case  '2':
             case  '1':
-            case '\n': battery_string[6] = '4'; break;
+            case '\n': battery_string[6] = SB_RED_N + '0'; break;
         }
 
         /* append the capacity */
@@ -533,8 +532,8 @@ int main(void)
     int i;
 
     { /* initialize most of the xcb stuff sam_bar */
-        int ptr = SCREEN_NUMBER;
-        sam_bar.connection = xcb_connect(NULL, &ptr);
+        int ptr[] = { SCREEN_NUMBER };
+        sam_bar.connection = xcb_connect(NULL, ptr);
         if (xcb_connection_has_error(sam_bar.connection)) {
             xcb_disconnect(sam_bar.connection);
             fprintf(stderr, "Unable to connect to X\n");
