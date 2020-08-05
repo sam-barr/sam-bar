@@ -34,7 +34,7 @@
 #define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
-#define BACKGROUND_COLOR 0xB80F1117
+#define BACKGROUND_COLOR 0xB8101216
 #define STRUTS_NUM_ARGS 12
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
 /* jsyk: 0F1117B8 is pretty, but doesn't match your theme */
@@ -45,6 +45,7 @@
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
 #define sb_pen_to_char(p) ((p) + '0')
 #define sb_char_to_pen(c) ((c) - '0')
+#define sb_is_numeric(c)  (((c) ^ '0') < 10)
 
 enum {
     SB_POLL_STDIN = 0,
@@ -349,8 +350,6 @@ void sb_loop_read_battery(char *battery_string) {
     fclose(status_file);
     fclose(capacity_file);
 }
-
-int sb_is_numeric(char c) { return c >= '0' && c <= '9'; }
 
 int sb_str_to_int(char *str) {
     int c, n = 0;
