@@ -392,7 +392,7 @@ void sb_loop_read_light(char *light_string) {
 void sb_loop_main(SamBar *sam_bar) {
     struct pollfd pollfds[SB_POLL_MAX];
     struct itimerspec ts;
-    int redraw = false, just_pamixer = false, i, hide = false;
+    int redraw = false, just_pamixer = false, i, hide = true;
     unsigned long int elapsed = 0; /* hopefully I don't leave this running for > 100 years */
     xcb_rectangle_t rectangle;
     char time_string[DATE_BUF_SIZE] = {0},
