@@ -26,7 +26,7 @@
 #define SCREEN_NUMBER 0
 #define ERROR NULL
 #define DATE_BUF_SIZE sizeof("#1Jun#1 05#1Fri#1 07#1 38")
-#define STDIN_LINE_LENGTH 55
+#define STDIN_LINE_LENGTH 60
 #define VOLUME_LENGTH 15
 #define BATTERY_LENGTH 20
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
@@ -34,7 +34,7 @@
 #define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
-#define BACKGROUND_COLOR 0xB80A0C10
+#define BACKGROUND_COLOR 0x00000000
 #define STRUTS_NUM_ARGS 12
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
 /* jsyk: 0F1117B8 is pretty, but doesn't match your theme */
@@ -392,7 +392,7 @@ void sb_loop_read_light(char *light_string) {
 void sb_loop_main(SamBar *sam_bar) {
     struct pollfd pollfds[SB_POLL_MAX];
     struct itimerspec ts;
-    int redraw = false, just_pamixer = false, i;
+    int redraw = false, just_pamixer = false, i, hide = false;
     unsigned long int elapsed = 0; /* hopefully I don't leave this running for > 100 years */
     xcb_rectangle_t rectangle;
     char time_string[DATE_BUF_SIZE] = {0},
@@ -446,8 +446,19 @@ void sb_loop_main(SamBar *sam_bar) {
             /* stdin died, and so do we */
             break;
         } else if (pollfds[SB_POLL_STDIN].revents & POLLIN) {
+            int do_hide;
             if (fgets(stdin_string, STDIN_LINE_LENGTH, stdin) == NULL)
                 break;
+            do_hide = strstr(stdin_string, "XXX") != NULL;
+            if (do_hide != hide) {
+                hide = do_hide;
+                /* state changed */
+                if (do_hide) {
+                    xcb_unmap_window(sam_bar->connection, sam_bar->window);
+                } else {
+                    xcb_map_window(sam_bar->connection, sam_bar->window);
+                }
+            }
             redraw = true;
         } else if (pollfds[SB_POLL_TIMER].revents & POLLIN) {
             long num;
@@ -493,7 +504,15 @@ void sb_loop_main(SamBar *sam_bar) {
             redraw = true;
         }
 
-        if (redraw) {
+        if (redraw && hide) {
+            xcb_poly_fill_rectangle(
+                    sam_bar->connection,
+                    sam_bar->window,
+                    sam_bar->gc,
+                    1, /* 1 rectangle */
+                    &rectangle);
+            xcb_flush(sam_bar->connection);
+        } else if (redraw && !hide) {
             int y = sam_bar->height;
             /* clear the screen */
             xcb_poly_fill_rectangle(
@@ -509,14 +528,15 @@ void sb_loop_main(SamBar *sam_bar) {
             y -= 3 * sam_bar->font_height + 2 * sam_bar->line_padding;
             sb_draw_text(sam_bar, y, volume_string);
             y -= 3 * sam_bar->font_height + 2 * sam_bar->line_padding;
-            if (battery_string[10] != '\0')
+            if (battery_string[10] != '\0') {
                 y -= sam_bar->font_height + sam_bar->line_padding;
+            }
             sb_draw_text(sam_bar, y, battery_string);
             y -= 3 * sam_bar->font_height + 2 * sam_bar->line_padding;
             sb_draw_text(sam_bar, y, light_string);
             xcb_flush(sam_bar->connection);
-            redraw = false;
         }
+        redraw = false;
     }
 
     /* relinquish loop resources */
@@ -701,9 +721,7 @@ int main(void) {
             STRUTS_NUM_ARGS, struts);
     }
 
-    xcb_map_window(sam_bar.connection, sam_bar.window);
     xcb_flush(sam_bar.connection);
-
     sb_loop_main(&sam_bar);
 
     /* relinquish resources */
