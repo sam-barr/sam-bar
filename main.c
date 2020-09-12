@@ -326,13 +326,13 @@ void sb_loop_read_battery(char *battery_string) {
             case  '4':
             case  '3': battery_string[6] = sb_pen_to_char(SB_YELLOW_N); break;
             case  '2':
-            case  '1':
-            case '\n': battery_string[6] = sb_pen_to_char(SB_RED_N); break;
+            case  '1': battery_string[6] = sb_pen_to_char(SB_RED_N); break;
         }
 
         /* append the capacity */
         if (capacity[1] == '\n') {
             /* single digit, add a space */
+            battery_string[6] = sb_pen_to_char(SB_RED_N);
             battery_string[7] = ' ';
             battery_string[8] = capacity[0];
         } else {
