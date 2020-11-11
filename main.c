@@ -673,7 +673,7 @@ int main(void) {
                         | XCB_CW_BORDER_PIXEL
                         | XCB_CW_OVERRIDE_REDIRECT
                         | XCB_CW_COLORMAP;
-                /* because we have a 32 bit visual/colormap, just directly use ARGB colors */
+                /* we have a 32 bit visual/colormap, su just use ARGB colors */
                 int values[4];
                 values[0] = BACKGROUND_COLOR;
                 values[1] = 0xFFFFFFFF;
