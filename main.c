@@ -34,7 +34,7 @@
 #define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
-#define BACKGROUND_COLOR 0x00000000
+#define BACKGROUND_COLOR 0xFF0F1117
 #define STRUTS_NUM_ARGS 12
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
 /* jsyk: 0F1117B8 is pretty, but doesn't match your theme */
