@@ -34,7 +34,6 @@
 #define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
-#define BACKGROUND_COLOR 0xFF161821
 #define STRUTS_NUM_ARGS 12
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
 /* jsyk: 0F1117B8 is pretty, but doesn't match your theme */
@@ -67,16 +66,37 @@ enum SB_PEN {
         SB_PEN_MAX
 };
 
+enum SB_COLORSCHEME {
+        SB_DARK,
+        SB_LIGHT,
+        SB_COLORSCHEME_MAX
+};
+
 #define SB_MAKE_COLOR(r, g, b) { 0x##r##r, 0x##g##g, 0x##b##b, 0xFFFF }
-const xcb_render_color_t SB_PEN_COLOR[SB_PEN_MAX] = {
-        SB_MAKE_COLOR(D2, D4, DE),
-        SB_MAKE_COLOR(6B, 70, 89),
-        SB_MAKE_COLOR(B4, BE, 82),
-        SB_MAKE_COLOR(95, C4, CE),
-        SB_MAKE_COLOR(E2, 78, 78),
-        SB_MAKE_COLOR(E2, A4, 78),
+const xcb_render_color_t SB_PEN_COLOR[SB_COLORSCHEME_MAX][SB_PEN_MAX] = {
+        {
+                SB_MAKE_COLOR(D2, D4, DE), /* default */
+                SB_MAKE_COLOR(6B, 70, 89), /* occupied workspace */
+                SB_MAKE_COLOR(B4, BE, 82), /* green */
+                SB_MAKE_COLOR(95, C4, CE), /* bluetooth */
+                SB_MAKE_COLOR(E2, 78, 78), /* red battery */
+                SB_MAKE_COLOR(E2, A4, 78), /* orange battery */
+        },
+        {
+                SB_MAKE_COLOR(2D, 53, 9E),
+                SB_MAKE_COLOR(33, 37, 4C),
+                SB_MAKE_COLOR(66, 8E, 3D),
+                SB_MAKE_COLOR(3F, 83, A6),
+                SB_MAKE_COLOR(CC, 51, 7A),
+                SB_MAKE_COLOR(C5, 73, 39),
+        }
 };
 #undef SB_MAKE_COLOR
+
+const int BACKGROUND_COLOR[SB_COLORSCHEME_MAX] = {
+        0xFF161821,
+        0xFFE8E9EC,
+};
 
 enum {
         NET_WM_WINDOW_TYPE = 0,
@@ -114,6 +134,8 @@ struct sam_bar {
         struct xcbft_face_holder face_holder;
 
         int font_height, line_padding, x_off, width, height;
+
+        enum SB_COLORSCHEME colorscheme;
 };
 
 enum {
@@ -469,9 +491,11 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                         break;
                 } else if (pollfds[SB_POLL_STDIN].revents & POLLIN) {
                         int do_hide;
+                        enum SB_COLORSCHEME new_color;
                         if (fgets(stdin_string, STDIN_LINE_LENGTH, stdin) == NULL)
                                 break;
                         do_hide = strstr(stdin_string, "XXX") != NULL;
+                        new_color = (strchr(stdin_string, 'Z') == NULL) ? SB_DARK : SB_LIGHT;
                         /* state changed */
                         if (do_hide != hide) {
                                 hide = do_hide;
@@ -582,6 +606,8 @@ int main(void) {
         struct sam_bar sam_bar;
         int i;
 
+        sam_bar.colorscheme = SB_DARK;
+
         { /* initialize most of the xcb stuff sam_bar */
                 int ptr[] = { SCREEN_NUMBER };
                 sam_bar.connection = xcb_connect(NULL, ptr);
@@ -606,7 +632,7 @@ int main(void) {
                 for (i = 0; i < SB_PEN_MAX; i++) {
                         sam_bar.pens[i] = xcbft_create_pen(
                                 sam_bar.connection,
-                                SB_PEN_COLOR[i]
+                                SB_PEN_COLOR[sam_bar.colorscheme][i]
                         );
                 }
         }
@@ -675,7 +701,7 @@ int main(void) {
                         | XCB_CW_COLORMAP;
                 /* we have a 32 bit visual/colormap, su just use ARGB colors */
                 int values[4];
-                values[0] = BACKGROUND_COLOR;
+                values[0] = BACKGROUND_COLOR[sam_bar.colorscheme];
                 values[1] = 0xFFFFFFFF;
                 values[2] = true;
                 values[3] = sam_bar.colormap;
@@ -698,7 +724,9 @@ int main(void) {
         { /* initialize graphics context (used for clearing the screen) */
                 xcb_void_cookie_t cookie;
                 int mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
-                int values[2] = { BACKGROUND_COLOR, 0xFFFFFFFF };
+                int values[2];
+                values[0] = BACKGROUND_COLOR[sam_bar.colorscheme];
+                values[1] = 0xFFFFFFFF;
                 cookie = xcb_create_gc_checked(
                         sam_bar.connection,
                         sam_bar.gc,
