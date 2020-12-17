@@ -33,7 +33,7 @@
 #define LIGHT_LENGTH 15
 #define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
 #define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
-#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %"
+#define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %●"
 #define BACKGROUND_COLOR 0xFF161821
 #define STRUTS_NUM_ARGS 12
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
@@ -266,6 +266,22 @@ void sb_read(struct exec_info *info, char *buffer, size_t num_bytes) {
         close(info->pipe[READ_FD]);
 }
 
+void sb_loop_read_recording(char *recording_string) {
+        char *pgrep[] = {"/usr/bin/pgrep", "-c", "ffmpeg-dummy", NULL},
+             buffer[] = {'0'};
+        struct exec_info pgrep_info;
+
+        sb_exec(&pgrep_info, pgrep);
+        sb_wait(&pgrep_info);
+        sb_read(&pgrep_info, buffer, sizeof buffer);
+
+        if (buffer[0] == '0') {
+                recording_string[0] = '\0';
+        } else {
+                recording_string[0] = '#';
+        }
+}
+
 void sb_loop_read_volume(char *volume_string) {
         char *pamixer[] = {"/usr/bin/pamixer", "--get-volume-human", NULL},
              *bluetooth[] = {"/usr/bin/bluetoothctl", "info", MAC_ADDRESS, NULL},
@@ -413,7 +429,8 @@ void sb_loop_main(struct sam_bar *sam_bar) {
              stdin_string[STDIN_LINE_LENGTH] = {0},
              volume_string[VOLUME_LENGTH] = {0},
              battery_string[BATTERY_LENGTH] = {0},
-             light_string[LIGHT_LENGTH] = {0};
+             light_string[LIGHT_LENGTH] = {0},
+             recording_string[] = "#4 ● ";
         struct exec_info pactl_info;
 
         {
@@ -537,6 +554,11 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                         redraw = true;
                 }
 
+                if (elapsed % 5 == 0) {
+                        sb_loop_read_recording(recording_string);
+                        redraw = true;
+                }
+
                 if (redraw && hide) {
                         xcb_poly_fill_rectangle(
                                 sam_bar->connection,
@@ -569,6 +591,8 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                         sb_draw_text(sam_bar, y, battery_string);
                         y -= 3 * sam_bar->font_height + 2 * sam_bar->line_padding;
                         sb_draw_text(sam_bar, y, light_string);
+                        y -= 1 * sam_bar->font_height + 1 * sam_bar->line_padding;
+                        sb_draw_text(sam_bar, y, recording_string);
                         xcb_flush(sam_bar->connection);
                 }
                 redraw = false;
