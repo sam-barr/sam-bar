@@ -41,6 +41,7 @@
 
 #define true 1
 #define false 0
+#define xyz 7
 
 #define DEBUG_BOOL(B) printf("%s\n", (B) ? "true" : "false")
 #define sb_pen_to_char(p) ((p) + '0')
