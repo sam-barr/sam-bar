@@ -32,7 +32,7 @@
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
 #define LIGHT_LENGTH 15
 #define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
-#define FONT_TEMPLATE "Hasklug Nerd Font:dpi=%d:size=%d:antialias=true:style=bold"
+#define FONT_TEMPLATE "Source Code Pro:dpi=%d:size=%d:antialias=true:style=bold"
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %●"
 #define BACKGROUND_COLOR 0xFF161821
 #define STRUTS_NUM_ARGS 12
