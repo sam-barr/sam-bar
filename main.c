@@ -422,7 +422,7 @@ void sb_loop_read_light(char *light_string) {
 void sb_loop_main(struct sam_bar *sam_bar) {
         struct pollfd pollfds[SB_POLL_MAX];
         struct itimerspec ts;
-        int redraw = false, just_pamixer = false, i, hide = true;
+        int redraw = false, just_pamixer = false, i, hide = -1;
         unsigned long int elapsed = 0; 
         xcb_rectangle_t rectangle;
         char time_string[DATE_BUF_SIZE] = {0},
@@ -478,6 +478,8 @@ void sb_loop_main(struct sam_bar *sam_bar) {
         sb_loop_read_volume(volume_string);
         sb_loop_read_battery(battery_string);
         sb_loop_read_light(light_string);
+        sb_loop_read_recording(recording_string);
+        xcb_map_window(sam_bar->connection, sam_bar->window);
         for (;;) {
                 /* blocks until one of the fds becomes open */
                 poll(pollfds, SB_POLL_MAX, -1);

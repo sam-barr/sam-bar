@@ -10,7 +10,7 @@ CLIBS=$(shell for lib in $(libs); do pkg-config --libs $$lib; done)
 
 OPT=-O2 -s -flto
 
-DEBUG=-Og -g -DDEBUG
+DEBUG=-Og -g -DDEBUG -fsanitize=address
 
 CSOURCE=main.c fonts-for-xcb/xcbft/xcbft.c fonts-for-xcb/utf8_utils/utf8.c
 
