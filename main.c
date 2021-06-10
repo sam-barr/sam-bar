@@ -176,7 +176,7 @@ void sb_draw_text(const struct sam_bar *sam_bar, int y, const char *message) {
                 // load 3 unicode characters
                 for (int i = 0; i < SB_NUM_CHARS; i++) {
                         int shift = FcUtf8ToUcs4(
-                                (FcChar8 *)message,
+                                (const FcChar8 *)message,
                                 text_32 + i,
                                 message_len
                         );
