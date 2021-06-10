@@ -37,7 +37,7 @@
 #define BACKGROUND_COLOR 0xFF161821
 #define STRUTS_NUM_ARGS 12
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
-/* jsyk: 0F1117B8 is pretty, but doesn't match your theme */
+// jsyk: 0F1117B8 is pretty, but doesn't match your theme
 
 #define true 1
 #define false 0
@@ -56,7 +56,7 @@ enum {
         SB_POLL_MAX
 };
 
-/* these names correspond to my alacritty config */
+// these names correspond to my alacritty config
 enum SB_PEN {
         SB_FG = 0,
         SB_BLACK_B,
@@ -158,7 +158,7 @@ void sb_test_cookie(const struct sam_bar *sam_bar,
 void sb_draw_text(const struct sam_bar *sam_bar, int y, const char *message) {
         enum SB_PEN pen;
         FcChar32 text_32[SB_NUM_CHARS];
-        int i, message_len, line_height;
+        int message_len, line_height;
         xcb_render_util_composite_text_stream_t *text_stream;
 
         message_len = strlen(message);
@@ -173,8 +173,8 @@ void sb_draw_text(const struct sam_bar *sam_bar, int y, const char *message) {
                         pen = SB_FG;
                 }
 
-                /* load 3 unicode characters */
-                for (i = 0; i < SB_NUM_CHARS; i++) {
+                // load 3 unicode characters
+                for (int i = 0; i < SB_NUM_CHARS; i++) {
                         int shift = FcUtf8ToUcs4(
                                 (FcChar8 *)message,
                                 text_32 + i,
@@ -201,7 +201,7 @@ void sb_draw_text(const struct sam_bar *sam_bar, int y, const char *message) {
                         sam_bar->pens[pen],
                         sam_bar->picture,
                         0,
-                        0, 0, /* x, y */
+                        0, 0, // x, y
                         text_stream
                 );
                 xcb_render_util_composite_text_free(text_stream);
@@ -221,11 +221,11 @@ void sb_exec(struct exec_info *info, char **args) {
 
         info->pid = fork();
         if (info->pid == -1) {
-                /* fork failed */
+                // fork failed
                 printf("fork failed\n");
                 exit(EXIT_FAILURE);
         } else if (info->pid == 0) {
-                /* we are child */
+                // we are child
                 dup2(info->pipe[WRITE_FD], STDOUT_FILENO);
                 close(info->pipe[WRITE_FD]);
                 close(info->pipe[READ_FD]);
@@ -294,28 +294,28 @@ void sb_loop_read_volume(char *volume_string) {
         sb_wait(&pamixer_info);
         sb_wait(&bluetooth_info);
 
-        /* assumption: $(bluetoothctl info | wc -c) < 1024 */
+        // assumption: $(bluetoothctl info | wc -c) < 1024
         sb_read(&pamixer_info, volume_buffer, sizeof volume_buffer);
         sb_read(&bluetooth_info, buffer, sizeof buffer);
         connected = strstr(buffer, "Connected: yes") != NULL;
 
-        /* decide color */
+        // decide color
         volume_string[5] = '#';
         volume_string[6] = sb_pen_to_char(connected ? SB_CYAN_B : SB_BLACK_B);
 
         if (volume_buffer[0] == 'm') {
-                /* muted */
+                // muted
                 strcpy(volume_string + 7, "Mut");
         } else if (volume_buffer[3] == '%') {
-                /* max volume */
+                // max volume
                 strcpy(volume_string + 7, "Max");
         } else if (volume_buffer[1] == '%') {
-                /* 1 digit volume */
+                // 1 digit volume
                 volume_string[7] = ' ';
                 volume_string[8] = volume_buffer[0];
                 volume_string[9] = '%';
         } else {
-                /* 2 digit volume */
+                // 2 digit volume
                 volume_string[7] = volume_buffer[0];
                 volume_string[8] = volume_buffer[1];
                 volume_string[9] = '%';
@@ -333,12 +333,12 @@ void sb_loop_read_battery(char *battery_string) {
         fgets(capacity, 4, capacity_file);
 
         if (capacity[2] == '0') {
-                /* battery full */
+                // battery full
                 strcpy(battery_string + 5, "#2Ful");
         } else {
                 battery_string[5] = '#';
-                /* decide color for percentage */
-                /* I think this is the first time I've used fall-through on purpose */
+                // decide color for percentage
+                // I think this is the first time I've used fall-through on purpose
                 switch (capacity[0]) {
                 case  '9':
                 case  '8': 
@@ -357,9 +357,9 @@ void sb_loop_read_battery(char *battery_string) {
                         break;
                 }
 
-                /* append the capacity */
+                // append the capacity
                 if (capacity[1] == '\n') {
-                        /* single digit, add a space */
+                        // single digit, add a space
                         battery_string[6] = sb_pen_to_char(SB_RED_N);
                         battery_string[7] = ' ';
                         battery_string[8] = capacity[0];
@@ -368,7 +368,7 @@ void sb_loop_read_battery(char *battery_string) {
                         battery_string[8] = capacity[1];
                 }
                 battery_string[9] = '%';
-                /* Display if the battery is charging */
+                // Display if the battery is charging
                 if (status == 'C') {
                         strcpy(battery_string + 10, "#5Chg");
                 } else {
@@ -464,34 +464,34 @@ void sb_loop_main(struct sam_bar *sam_bar) {
         );
         strcpy(light_string, "#1Lit");
 
-        ts.it_interval.tv_sec = 1; /* fire every second */
+        ts.it_interval.tv_sec = 1; // fire every second
         ts.it_interval.tv_nsec = 0;
         ts.it_value.tv_sec = 0;
-        ts.it_value.tv_nsec = 1; /* initial fire happens *basically* instantly */
+        ts.it_value.tv_nsec = 1; // initial fire happens *basically* instantly
         timerfd_settime(pollfds[1].fd, 0, &ts, NULL);
 
         rectangle.x = rectangle.y = 0;
         rectangle.width = sam_bar->width;
         rectangle.height = sam_bar->height;
 
-        /* main loop */
+        // main loop
         sb_loop_read_volume(volume_string);
         sb_loop_read_battery(battery_string);
         sb_loop_read_light(light_string);
         sb_loop_read_recording(recording_string);
         xcb_map_window(sam_bar->connection, sam_bar->window);
         for (;;) {
-                /* blocks until one of the fds becomes open */
+                // blocks until one of the fds becomes open 
                 poll(pollfds, SB_POLL_MAX, -1);
                 if (pollfds[SB_POLL_STDIN].revents & POLLHUP) {
-                        /* stdin died, and so do we */
+                        // stdin died, and so do we
                         break;
                 } else if (pollfds[SB_POLL_STDIN].revents & POLLIN) {
                         int do_hide;
                         if (fgets(stdin_string, STDIN_LINE_LENGTH, stdin) == NULL)
                                 break;
                         do_hide = strstr(stdin_string, "XXX") != NULL;
-                        /* state changed */
+                        // state changed
                         if (do_hide != hide) {
                                 hide = do_hide;
                                 if (do_hide) {
@@ -538,7 +538,7 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                                 redraw = true;
                         }
                 } else if (pollfds[SB_POLL_BATTERY].revents & POLLIN) {
-                        /* read the battery when the status changes */
+                        // read the battery when the status changes
                         struct inotify_event event;
                         read(pollfds[SB_POLL_BATTERY].fd, &event, sizeof event);
                         sb_loop_read_battery(battery_string);
@@ -550,7 +550,7 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                         redraw = true;
                 }
 
-                /* read battery every 30 seconds */
+                // read battery every 30 seconds
                 if (elapsed % 30 == 0) {
                         sb_loop_read_battery(battery_string);
                         redraw = true;
@@ -566,21 +566,21 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                                 sam_bar->connection,
                                 sam_bar->window,
                                 sam_bar->gc,
-                                1, /* 1 rectangle */
+                                1, // 1 rectangle
                                 &rectangle
                         );
                         xcb_flush(sam_bar->connection);
                 } else if (redraw && !hide) {
                         int y = sam_bar->height;
-                        /* clear the screen */
+                        // clear the screen
                         xcb_poly_fill_rectangle(
                                 sam_bar->connection,
                                 sam_bar->window,
                                 sam_bar->gc,
-                                1, /* 1 rectangle */
+                                1, // 1 rectangle
                                 &rectangle
                         );
-                        /* write the text */
+                        // write the text
                         sb_draw_text(sam_bar, sam_bar->font_height, stdin_string);
                         y -= 4 * sam_bar->font_height + 5 * sam_bar->line_padding;
                         sb_draw_text(sam_bar, y, time_string);
@@ -600,15 +600,14 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                 redraw = false;
         }
 
-        /* relinquish loop resources */
+        // relinquish loop resources
         sb_kill(&pactl_info);
 }
 
 int main(void) {
         struct sam_bar sam_bar;
-        int i;
 
-        { /* initialize most of the xcb stuff sam_bar */
+        { // initialize most of the xcb stuff sam_bar
                 int ptr[] = { SCREEN_NUMBER };
                 sam_bar.connection = xcb_connect(NULL, ptr);
                 if (xcb_connection_has_error(sam_bar.connection)) {
@@ -629,7 +628,7 @@ int main(void) {
                         -1, 
                         32
                 )->visual_id;
-                for (i = 0; i < SB_PEN_MAX; i++) {
+                for (int i = 0; i < SB_PEN_MAX; i++) {
                         sam_bar.pens[i] = xcbft_create_pen(
                                 sam_bar.connection,
                                 SB_PEN_COLOR[i]
@@ -637,7 +636,7 @@ int main(void) {
                 }
         }
 
-        /* initialize a 32 bit colormap */
+        // initialize a 32 bit colormap
         xcb_create_colormap(
                 sam_bar.connection,
                 XCB_COLORMAP_ALLOC_NONE,
@@ -645,7 +644,7 @@ int main(void) {
                 sam_bar.visual_id
         );
 
-        { /* load up fonts and glyphs */
+        { // load up fonts and glyphs
                 char searchlist[100] = {0}, *current_display;
                 FcStrSet *fontsearch;
                 struct xcbft_patterns_holder font_patterns;
@@ -693,13 +692,13 @@ int main(void) {
                 utf_holder_destroy(chars);
         }
 
-        { /* initialize window */
+        { // initialize window
                 xcb_void_cookie_t cookie;
                 int mask = XCB_CW_BACK_PIXEL
                         | XCB_CW_BORDER_PIXEL
                         | XCB_CW_OVERRIDE_REDIRECT
                         | XCB_CW_COLORMAP;
-                /* we have a 32 bit visual/colormap, su just use ARGB colors */
+                // we have a 32 bit visual/colormap, su just use ARGB colors
                 int values[4];
                 values[0] = BACKGROUND_COLOR;
                 values[1] = 0xFFFFFFFF;
@@ -708,11 +707,11 @@ int main(void) {
 
                 cookie = xcb_create_window_checked(
                         sam_bar.connection,
-                        32, /* 32 bits of depth */
+                        32, // 32 bits of depth
                         sam_bar.window, sam_bar.screen->root,
-                        0, 0, /* top corner of screen */
+                        0, 0, // top corner of screen
                         sam_bar.width, sam_bar.height,
-                        0, /* border width */
+                        0, // border width
                         XCB_WINDOW_CLASS_INPUT_OUTPUT,
                         sam_bar.visual_id,
                         mask,
@@ -721,7 +720,7 @@ int main(void) {
                 sb_test_cookie(&sam_bar, cookie, "xcb_create_window_checked failed");
         }
 
-        { /* initialize graphics context (used for clearing the screen) */
+        { // initialize graphics context (used for clearing the screen)
                 xcb_void_cookie_t cookie;
                 int mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
                 int values[2] = { BACKGROUND_COLOR, 0xFFFFFFFF };
@@ -735,7 +734,7 @@ int main(void) {
                 sb_test_cookie(&sam_bar, cookie, "xcb_create_gc_checked failed");
         }
 
-        { /* initialize picture (used for drawing text) */
+        { // initialize picture (used for drawing text)
                 const xcb_render_query_pict_formats_reply_t *fmt_rep =
                         xcb_render_util_query_formats(sam_bar.connection);
                 xcb_render_pictforminfo_t *fmt = xcb_render_util_find_standard_format(
@@ -758,17 +757,17 @@ int main(void) {
                 sb_test_cookie(&sam_bar, cookie, "xcb_create_picture_checked failed");
         }
 
-        { /* load atoms */
+        { // load atoms
                 xcb_intern_atom_cookie_t atom_cookies[SB_ATOM_MAX];
-                for (i = 0; i < SB_ATOM_MAX; i++) {
+                for (int i = 0; i < SB_ATOM_MAX; i++) {
                         atom_cookies[i] = xcb_intern_atom(
                                 sam_bar.connection,
-                                0, /* "atom created if it doesn't already exist" */
+                                0, // "atom created if it doesn't already exist"
                                 SB_ATOM_STRING[i].len,
                                 SB_ATOM_STRING[i].name
                         );
                 }
-                for (i = 0; i < SB_ATOM_MAX; i++) {
+                for (int i = 0; i < SB_ATOM_MAX; i++) {
                         xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(
                                 sam_bar.connection,
                                 atom_cookies[i],
@@ -779,20 +778,20 @@ int main(void) {
                 }
         }
 
-        /* change window properties to be a dock */
+        // change window properties to be a dock
         xcb_change_property(
                 sam_bar.connection,
                 XCB_PROP_MODE_REPLACE,
                 sam_bar.window,
                 sam_bar.atoms[NET_WM_WINDOW_TYPE],
                 XCB_ATOM_ATOM,
-                32, /* MAGIC NUMBER?? */
-                1, /* sending 1 argument */
+                32, // MAGIC NUMBER??
+                1, // sending 1 argument
                 &sam_bar.atoms[NET_WM_WINDOW_TYPE_DOCK]
         );
 
         {
-                /* setup struts so windows don't overlap the bar */
+                // setup struts so windows don't overlap the bar
                 int struts[STRUTS_NUM_ARGS] = {0};
                 struts[LEFT] = sam_bar.width;
                 struts[LEFT_START_Y] = struts[RIGHT_START_Y] = 0;
@@ -805,7 +804,7 @@ int main(void) {
                         sam_bar.window,
                         sam_bar.atoms[NET_WM_STRUT_PARTIAL],
                         XCB_ATOM_CARDINAL,
-                        32, /* MAGIC NUMBER ? */
+                        32, // MAGIC NUMBER ?
                         STRUTS_NUM_ARGS, struts
                 );
         }
@@ -813,8 +812,8 @@ int main(void) {
         xcb_flush(sam_bar.connection);
         sb_loop_main(&sam_bar);
 
-        /* relinquish resources */
-        for (i = 0; i < SB_PEN_MAX; i++) {
+        // relinquish resources
+        for (int i = 0; i < SB_PEN_MAX; i++) {
                 xcb_render_free_picture(sam_bar.connection, sam_bar.pens[i]);
         }
         xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
@@ -824,7 +823,7 @@ int main(void) {
         xcb_render_util_disconnect(sam_bar.connection);
         xcb_disconnect(sam_bar.connection);
         xcbft_done();
-        /* if valgrind reports more than 18,612 reachable that might be a leak */
+        // if valgrind reports more than 18,612 reachable that might be a leak
 
         return EXIT_SUCCESS;
 }

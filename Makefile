@@ -2,7 +2,7 @@ libs=xcb xcb-renderutil xcb-aux fontconfig
 
 INSTALL_DIR=$(HOME)/.local/bin
 
-CFLAGS=-Wall -Werror -Wextra -Wpedantic -std=c90 \
+CFLAGS=-Wall -Werror -Wextra -Wpedantic -std=c99 \
 	   $(shell for lib in $(libs); do pkg-config --cflags $$lib; done) \
 	   -D_POSIX_C_SOURCE=200812L
 
