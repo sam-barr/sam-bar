@@ -798,7 +798,7 @@ int main(void) {
                 XCB_ATOM_STRING,
                 8,
                 strlen("sam-bar"),
-                "sam_bar"
+                "sam-bar"
 
         );
 
