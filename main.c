@@ -790,6 +790,18 @@ int main(void) {
                 &sam_bar.atoms[NET_WM_WINDOW_TYPE_DOCK]
         );
 
+        xcb_change_property(
+                sam_bar.connection,
+                XCB_PROP_MODE_REPLACE,
+                sam_bar.window,
+                XCB_ATOM_WM_NAME,
+                XCB_ATOM_STRING,
+                8,
+                strlen("sam-bar"),
+                "sam_bar"
+
+        );
+
         {
                 // setup struts so windows don't overlap the bar
                 int struts[STRUTS_NUM_ARGS] = {0};
