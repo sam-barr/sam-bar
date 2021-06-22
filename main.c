@@ -268,7 +268,7 @@ void sb_read(struct exec_info *info, char *buffer, size_t num_bytes) {
 
 void sb_loop_read_recording(char *recording_string) {
         char *pgrep[] = {"/usr/bin/pgrep", "-c", "ffmpeg-dummy", NULL},
-             buffer[] = {'0'};
+             buffer[10] = {'0'};
         struct exec_info pgrep_info;
 
         sb_exec(&pgrep_info, pgrep);
