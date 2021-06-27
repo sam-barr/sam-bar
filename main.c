@@ -32,10 +32,15 @@
 #define BATTERY_DIRECTORY "/sys/class/power_supply/BAT0"
 #define LIGHT_LENGTH 15
 #define LIGHT_DIRECTORY "/sys/class/backlight/intel_backlight"
-#define FONT_TEMPLATE "Source Code Pro:dpi=%d:size=%d:antialias=true:style=bold"
+#define DPI 336
+#define FONT_STRING "Source Code Pro:dpi=336:size=7:antialias=true:style=bold"
 #define CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890[] %●"
 #define BACKGROUND_COLOR 0xFF161821
 #define STRUTS_NUM_ARGS 12
+#define FONT_HEIGHT 32
+#define LINE_PADDING 24
+#define X_OFF 5
+#define WIDTH 75
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
 // jsyk: 0F1117B8 is pretty, but doesn't match your theme
 
@@ -113,7 +118,7 @@ struct sam_bar {
 
         struct xcbft_face_holder face_holder;
 
-        int font_height, line_padding, x_off, width, height;
+        unsigned int width, height;
 };
 
 enum {
@@ -162,7 +167,7 @@ void sb_draw_text(const struct sam_bar *sam_bar, int y, const char *message) {
         xcb_render_util_composite_text_stream_t *text_stream;
 
         message_len = strlen(message);
-        line_height = sam_bar->font_height + sam_bar->line_padding;
+        line_height = FONT_HEIGHT + LINE_PADDING;
 
         for (; message[0] != '\0' && message[0] != '\n'; y += line_height) {
                 if (message[0] == '#') {
@@ -191,7 +196,7 @@ void sb_draw_text(const struct sam_bar *sam_bar, int y, const char *message) {
                 );
                 xcb_render_util_glyphs_32(
                         text_stream,
-                        sam_bar->x_off, y,
+                        X_OFF, y,
                         SB_NUM_CHARS,
                         text_32
                 );
@@ -581,19 +586,19 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                                 &rectangle
                         );
                         // write the text
-                        sb_draw_text(sam_bar, sam_bar->font_height, stdin_string);
-                        y -= 4 * sam_bar->font_height + 5 * sam_bar->line_padding;
+                        sb_draw_text(sam_bar, FONT_HEIGHT, stdin_string);
+                        y -= 4 * FONT_HEIGHT + 5 * LINE_PADDING;
                         sb_draw_text(sam_bar, y, time_string);
-                        y -= 3 * sam_bar->font_height + 2 * sam_bar->line_padding;
+                        y -= 3 * FONT_HEIGHT + 2 * LINE_PADDING;
                         sb_draw_text(sam_bar, y, volume_string);
-                        y -= 3 * sam_bar->font_height + 2 * sam_bar->line_padding;
+                        y -= 3 * FONT_HEIGHT + 2 * LINE_PADDING;
                         if (battery_string[10] != '\0') {
-                                y -= sam_bar->font_height + sam_bar->line_padding;
+                                y -= FONT_HEIGHT + LINE_PADDING;
                         }
                         sb_draw_text(sam_bar, y, battery_string);
-                        y -= 3 * sam_bar->font_height + 2 * sam_bar->line_padding;
+                        y -= 3 * FONT_HEIGHT + 2 * LINE_PADDING;
                         sb_draw_text(sam_bar, y, light_string);
-                        y -= 1 * sam_bar->font_height + 1 * sam_bar->line_padding;
+                        y -= 1 * FONT_HEIGHT + 1 * LINE_PADDING;
                         sb_draw_text(sam_bar, y, recording_string);
                         xcb_flush(sam_bar->connection);
                 }
@@ -619,6 +624,7 @@ int main(void) {
                         xcb_get_setup(sam_bar.connection)
                 ).data;
                 sam_bar.height = sam_bar.screen->height_in_pixels;
+                sam_bar.width = WIDTH;
                 sam_bar.window = xcb_generate_id(sam_bar.connection);
                 sam_bar.gc = xcb_generate_id(sam_bar.connection);
                 sam_bar.picture = xcb_generate_id(sam_bar.connection);
@@ -645,49 +651,22 @@ int main(void) {
         );
 
         { // load up fonts and glyphs
-                char searchlist[100] = {0}, *current_display;
                 FcStrSet *fontsearch;
                 struct xcbft_patterns_holder font_patterns;
                 struct utf_holder chars;
-                int dpi, size;
-
-                current_display = getenv("CURRENT_DISPLAY");
-                if (strcmp("low", current_display) == 0) {
-                        sam_bar.font_height = 14;
-                        sam_bar.line_padding = 10;
-                        sam_bar.x_off = 2;
-                        sam_bar.width = 32;
-                        size = 11;
-                        dpi = 96;
-                } else if (strcmp("high", current_display) == 0) {
-                        sam_bar.font_height = 32;
-                        sam_bar.line_padding = 24;
-                        sam_bar.x_off = 5;
-                        sam_bar.width = 75;
-                        size = 7;
-                        dpi = 336;
-                } else {
-                        fprintf(
-                                stderr,
-                                "Unknown CURRENT_DISPLAY: %s\n",
-                                current_display
-                        );
-                        return EXIT_FAILURE;
-                }
 
                 xcbft_init();
-                sprintf(searchlist, FONT_TEMPLATE, dpi, size);
-                fontsearch = xcbft_extract_fontsearch_list(searchlist);
+                fontsearch = xcbft_extract_fontsearch_list(FONT_STRING);
                 font_patterns = xcbft_query_fontsearch_all(fontsearch);
                 FcStrSetDestroy(fontsearch);
-                sam_bar.face_holder = xcbft_load_faces(font_patterns, dpi);
+                sam_bar.face_holder = xcbft_load_faces(font_patterns, DPI);
                 xcbft_patterns_holder_destroy(font_patterns);
                 chars = char_to_uint32(CHARS);
                 sam_bar.glyphset = xcbft_load_glyphset(
                                 sam_bar.connection,
                                 sam_bar.face_holder,
                                 chars,
-                                dpi
+                                DPI
                 ).glyphset;
                 utf_holder_destroy(chars);
         }
