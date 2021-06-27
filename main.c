@@ -42,7 +42,6 @@
 #define X_OFF 5
 #define WIDTH 75
 #define MAC_ADDRESS "00:1B:66:AC:77:78"
-// jsyk: 0F1117B8 is pretty, but doesn't match your theme
 
 #define true 1
 #define false 0
@@ -107,7 +106,6 @@ struct sam_bar {
         xcb_connection_t *connection;
         xcb_screen_t *screen;
         xcb_window_t window;
-        xcb_gcontext_t gc;
         xcb_colormap_t colormap;
         xcb_visualid_t visual_id;
         xcb_atom_t atoms[SB_ATOM_MAX];
@@ -429,7 +427,6 @@ void sb_loop_main(struct sam_bar *sam_bar) {
         struct itimerspec ts;
         int redraw = false, just_pamixer = false, i, hide = -1;
         unsigned long int elapsed = 0; 
-        xcb_rectangle_t rectangle;
         char time_string[DATE_BUF_SIZE] = {0},
              stdin_string[STDIN_LINE_LENGTH] = {0},
              volume_string[VOLUME_LENGTH] = {0},
@@ -474,10 +471,6 @@ void sb_loop_main(struct sam_bar *sam_bar) {
         ts.it_value.tv_sec = 0;
         ts.it_value.tv_nsec = 1; // initial fire happens *basically* instantly
         timerfd_settime(pollfds[1].fd, 0, &ts, NULL);
-
-        rectangle.x = rectangle.y = 0;
-        rectangle.width = sam_bar->width;
-        rectangle.height = sam_bar->height;
 
         // main loop
         sb_loop_read_volume(volume_string);
@@ -567,23 +560,21 @@ void sb_loop_main(struct sam_bar *sam_bar) {
                 }
 
                 if (redraw && hide) {
-                        xcb_poly_fill_rectangle(
+                        xcb_clear_area(
                                 sam_bar->connection,
-                                sam_bar->window,
-                                sam_bar->gc,
-                                1, // 1 rectangle
-                                &rectangle
+                                0, sam_bar->window,
+                                0, 0,
+                                sam_bar->width, sam_bar->height
                         );
                         xcb_flush(sam_bar->connection);
                 } else if (redraw && !hide) {
                         int y = sam_bar->height;
                         // clear the screen
-                        xcb_poly_fill_rectangle(
+                        xcb_clear_area(
                                 sam_bar->connection,
-                                sam_bar->window,
-                                sam_bar->gc,
-                                1, // 1 rectangle
-                                &rectangle
+                                0, sam_bar->window,
+                                0, 0,
+                                sam_bar->width, sam_bar->height
                         );
                         // write the text
                         sb_draw_text(sam_bar, FONT_HEIGHT, stdin_string);
@@ -626,7 +617,6 @@ int main(void) {
                 sam_bar.height = sam_bar.screen->height_in_pixels;
                 sam_bar.width = WIDTH;
                 sam_bar.window = xcb_generate_id(sam_bar.connection);
-                sam_bar.gc = xcb_generate_id(sam_bar.connection);
                 sam_bar.picture = xcb_generate_id(sam_bar.connection);
                 sam_bar.colormap = xcb_generate_id(sam_bar.connection);
                 sam_bar.visual_id = xcb_aux_find_visual_by_attrs(
@@ -697,20 +687,6 @@ int main(void) {
                         values
                 );
                 sb_test_cookie(&sam_bar, cookie, "xcb_create_window_checked failed");
-        }
-
-        { // initialize graphics context (used for clearing the screen)
-                xcb_void_cookie_t cookie;
-                int mask = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND;
-                int values[2] = { BACKGROUND_COLOR, 0xFFFFFFFF };
-                cookie = xcb_create_gc_checked(
-                        sam_bar.connection,
-                        sam_bar.gc,
-                        sam_bar.window,
-                        mask,
-                        values
-                );
-                sb_test_cookie(&sam_bar, cookie, "xcb_create_gc_checked failed");
         }
 
         { // initialize picture (used for drawing text)
@@ -809,7 +785,6 @@ int main(void) {
         }
         xcb_render_free_picture(sam_bar.connection, sam_bar.picture);
         xcb_free_colormap(sam_bar.connection, sam_bar.colormap);
-        xcb_free_gc(sam_bar.connection, sam_bar.gc);
         xcbft_face_holder_destroy(sam_bar.face_holder);
         xcb_render_util_disconnect(sam_bar.connection);
         xcb_disconnect(sam_bar.connection);
